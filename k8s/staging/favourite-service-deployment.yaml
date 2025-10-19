@@ -1,0 +1,124 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: favourite-service-config
+  namespace: staging
+data:
+  SPRING_PROFILES_ACTIVE: "stage"
+  SERVICE_DISCOVERY_URL: "http://service-discovery.ecommerce-staging.svc.cluster.local:8761"
+  CLOUD_CONFIG_URL: "http://cloud-config.ecommerce-staging.svc.cluster.local:9296"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: favourite-service
+  namespace: staging
+  labels:
+    app: favourite-service
+    environment: staging
+    version: v1
+spec:
+      nodeSelector:
+        pool: microservices-pool
+  selector:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: favourite-service
+  template:
+    metadata:
+      labels:
+        app: favourite-service
+        environment: staging
+        version: v1
+    spec:
+      nodeSelector:
+        pool: microservices-pool
+      containers:
+      - name: favourite-service
+        image: geoffrey0pv/favourite-service:latest-master
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8800
+          protocol: TCP
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          valueFrom:
+            configMapKeyRef:
+              name: favourite-service-config
+              key: SPRING_PROFILES_ACTIVE
+        - name: SERVICE_DISCOVERY_URL
+          valueFrom:
+            configMapKeyRef:
+              name: favourite-service-config
+              key: SERVICE_DISCOVERY_URL
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8800
+          initialDelaySeconds: 60
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8800
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: favourite-service
+  namespace: staging
+  labels:
+    app: favourite-service
+spec:
+      nodeSelector:
+        pool: microservices-pool
+  type: ClusterIP
+  ports:
+  - port: 8800
+    targetPort: 8800
+    protocol: TCP
+    name: http
+  selector:
+    app: favourite-service
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: favourite-service-hpa
+  namespace: staging
+spec:
+      nodeSelector:
+        pool: microservices-pool
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: favourite-service
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
