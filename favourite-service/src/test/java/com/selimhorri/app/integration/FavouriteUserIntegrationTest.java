@@ -51,11 +51,15 @@ class FavouriteUserIntegrationTest {
     private Favourite favourite;
     private UserDto userDto;
     private ProductDto productDto;
+    private LocalDateTime fixedLikeDate;
 
     @BeforeEach
     void setUp() {
         // Limpiar repositorio antes de cada prueba
         favouriteRepository.deleteAll();
+
+        // Use a fixed date for consistent test results
+        fixedLikeDate = LocalDateTime.of(2023, 10, 19, 10, 0, 0);
 
         // Configurar datos de prueba
         userDto = new UserDto();
@@ -73,7 +77,7 @@ class FavouriteUserIntegrationTest {
         favourite = new Favourite();
         favourite.setUserId(1);
         favourite.setProductId(1);
-        favourite.setLikeDate(LocalDateTime.now());
+        favourite.setLikeDate(fixedLikeDate);
     }
 
     @Test
@@ -95,7 +99,7 @@ class FavouriteUserIntegrationTest {
             .thenReturn(productDto);
 
         // When - Obtener favorito por ID
-        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId());
+        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId(), savedFavourite.getLikeDate());
         FavouriteDto result = favouriteService.findById(favouriteId);
 
         // Then - Verificar que se obtuvo información del usuario
@@ -125,7 +129,7 @@ class FavouriteUserIntegrationTest {
             .thenThrow(new RestClientException("Connection refused"));
 
         // When & Then - Debe lanzar excepción
-        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId());
+        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId(), savedFavourite.getLikeDate());
         
         assertThrows(RestClientException.class, () -> {
             favouriteService.findById(favouriteId);
@@ -200,7 +204,7 @@ class FavouriteUserIntegrationTest {
             .thenReturn(productDto);
 
         // When - Obtener favorito
-        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId());
+        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId(), savedFavourite.getLikeDate());
         FavouriteDto result = favouriteService.findById(favouriteId);
 
         // Then - El favorito existe pero sin datos de usuario
@@ -217,7 +221,7 @@ class FavouriteUserIntegrationTest {
     void testUserDataConsistency_AcrossMultipleCalls() {
         // Given - Mismo favorito consultado múltiples veces
         Favourite savedFavourite = favouriteRepository.save(favourite);
-        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId());
+        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId(), savedFavourite.getLikeDate());
 
         when(restTemplate.getForObject(
             contains("/user-service/"),

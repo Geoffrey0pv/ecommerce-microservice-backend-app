@@ -19,7 +19,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.selimhorri.app.domain.User;
+import com.selimhorri.app.domain.Credential;
+import com.selimhorri.app.domain.RoleBasedAuthority;
 import com.selimhorri.app.dto.UserDto;
+import com.selimhorri.app.dto.CredentialDto;
 import com.selimhorri.app.exception.wrapper.UserObjectNotFoundException;
 import com.selimhorri.app.repository.UserRepository;
 import com.selimhorri.app.service.impl.UserServiceImpl;
@@ -45,13 +48,28 @@ class UserServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        // Configurar datos de prueba
+        // Configurar credencial de prueba
+        Credential credential = new Credential();
+        credential.setCredentialId(1);
+        credential.setUsername("johndoe");
+        credential.setPassword("password123");
+        credential.setRoleBasedAuthority(RoleBasedAuthority.ROLE_USER);
+        
+        // Configurar datos de prueba del usuario
         user = new User();
         user.setUserId(1);
         user.setFirstName("John");
         user.setLastName("Doe");
         user.setEmail("john.doe@example.com");
         user.setPhone("1234567890");
+        user.setCredential(credential);
+        
+        // Configurar credencial DTO de prueba
+        CredentialDto credentialDto = new CredentialDto();
+        credentialDto.setCredentialId(1);
+        credentialDto.setUsername("johndoe");
+        credentialDto.setPassword("password123");
+        credentialDto.setRoleBasedAuthority(RoleBasedAuthority.ROLE_USER);
         
         userDto = new UserDto();
         userDto.setUserId(1);
@@ -59,17 +77,25 @@ class UserServiceImplTest {
         userDto.setLastName("Doe");
         userDto.setEmail("john.doe@example.com");
         userDto.setPhone("1234567890");
+        userDto.setCredentialDto(credentialDto);
     }
 
     @Test
     @DisplayName("Test 1: Find all users - should return list of users")
     void testFindAll_ShouldReturnUserList() {
         // Given
+        Credential credential2 = new Credential();
+        credential2.setCredentialId(2);
+        credential2.setUsername("janesmith");
+        credential2.setPassword("password456");
+        credential2.setRoleBasedAuthority(RoleBasedAuthority.ROLE_USER);
+        
         User user2 = new User();
         user2.setUserId(2);
         user2.setFirstName("Jane");
         user2.setLastName("Smith");
         user2.setEmail("jane.smith@example.com");
+        user2.setCredential(credential2);
         
         List<User> users = Arrays.asList(user, user2);
         when(userRepository.findAll()).thenReturn(users);

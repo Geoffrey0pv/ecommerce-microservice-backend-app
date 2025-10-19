@@ -67,7 +67,7 @@ class FavouriteServiceImplTest {
         productDto.setProductTitle("Laptop Dell XPS 15");
         productDto.setPriceUnit(1299.99);
         
-        favouriteId = new FavouriteId(1, 1);
+        favouriteId = new FavouriteId(1, 1, LocalDateTime.now());
         
         favourite = new Favourite();
         favourite.setLikeDate(LocalDateTime.now());

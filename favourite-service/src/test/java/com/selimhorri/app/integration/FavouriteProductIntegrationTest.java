@@ -49,10 +49,14 @@ class FavouriteProductIntegrationTest {
     private Favourite favourite;
     private UserDto userDto;
     private ProductDto productDto;
+    private LocalDateTime fixedLikeDate;
 
     @BeforeEach
     void setUp() {
         favouriteRepository.deleteAll();
+
+        // Use a fixed date for consistent test results
+        fixedLikeDate = LocalDateTime.of(2023, 10, 19, 10, 0, 0);
 
         userDto = new UserDto();
         userDto.setUserId(1);
@@ -70,7 +74,7 @@ class FavouriteProductIntegrationTest {
         favourite = new Favourite();
         favourite.setUserId(1);
         favourite.setProductId(1);
-        favourite.setLikeDate(LocalDateTime.now());
+        favourite.setLikeDate(fixedLikeDate);
     }
 
     @Test
@@ -85,7 +89,7 @@ class FavouriteProductIntegrationTest {
             .thenReturn(productDto);
 
         // When
-        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId());
+        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId(), savedFavourite.getLikeDate());
         FavouriteDto result = favouriteService.findById(favouriteId);
 
         // Then
@@ -111,7 +115,7 @@ class FavouriteProductIntegrationTest {
             .thenReturn(productDto);
 
         // When
-        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId());
+        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId(), savedFavourite.getLikeDate());
         FavouriteDto result = favouriteService.findById(favouriteId);
 
         // Then
@@ -140,7 +144,7 @@ class FavouriteProductIntegrationTest {
             .thenReturn(outOfStockProduct);
 
         // When
-        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId());
+        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId(), savedFavourite.getLikeDate());
         FavouriteDto result = favouriteService.findById(favouriteId);
 
         // Then
@@ -161,7 +165,7 @@ class FavouriteProductIntegrationTest {
             .thenReturn(null); // Producto no encontrado
 
         // When
-        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId());
+        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId(), savedFavourite.getLikeDate());
         FavouriteDto result = favouriteService.findById(favouriteId);
 
         // Then
@@ -181,7 +185,7 @@ class FavouriteProductIntegrationTest {
             .thenReturn(productDto);
 
         // When
-        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId());
+        FavouriteId favouriteId = new FavouriteId(savedFavourite.getUserId(), savedFavourite.getProductId(), savedFavourite.getLikeDate());
         FavouriteDto result = favouriteService.findById(favouriteId);
 
         // Then
