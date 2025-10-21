@@ -19,7 +19,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.selimhorri.app.domain.Order;
+import com.selimhorri.app.domain.Cart;
 import com.selimhorri.app.dto.OrderDto;
+import com.selimhorri.app.dto.CartDto;
 import com.selimhorri.app.exception.wrapper.OrderNotFoundException;
 import com.selimhorri.app.repository.OrderRepository;
 import com.selimhorri.app.service.impl.OrderServiceImpl;
@@ -45,28 +47,44 @@ class OrderServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        // Configurar Cart para las pruebas
+        Cart cart = new Cart();
+        cart.setCartId(1);
+        cart.setUserId(101);
+        
+        CartDto cartDto = new CartDto();
+        cartDto.setCartId(1);
+        cartDto.setUserId(101);
+        
         // Configurar datos de prueba
         order = new Order();
         order.setOrderId(1);
         order.setOrderDate(LocalDateTime.now());
         order.setOrderDesc("Test order for laptop");
         order.setOrderFee(1299.99);
+        order.setCart(cart);
         
         orderDto = new OrderDto();
         orderDto.setOrderId(1);
         orderDto.setOrderDate(LocalDateTime.now());
         orderDto.setOrderDesc("Test order for laptop");
         orderDto.setOrderFee(1299.99);
+        orderDto.setCartDto(cartDto);
     }
 
     @Test
     @DisplayName("Test 1: Find all orders - should return list of orders")
     void testFindAll_ShouldReturnOrderList() {
         // Given
+        Cart cart2 = new Cart();
+        cart2.setCartId(2);
+        cart2.setUserId(102);
+        
         Order order2 = new Order();
         order2.setOrderId(2);
         order2.setOrderDesc("Second test order");
         order2.setOrderFee(999.99);
+        order2.setCart(cart2);
         
         List<Order> orders = Arrays.asList(order, order2);
         when(orderRepository.findAll()).thenReturn(orders);
@@ -148,10 +166,15 @@ class OrderServiceImplTest {
         orderDto.setOrderDesc("Updated order description");
         orderDto.setOrderFee(1499.99);
         
+        Cart updatedCart = new Cart();
+        updatedCart.setCartId(1);
+        updatedCart.setUserId(101);
+        
         Order updatedOrder = new Order();
         updatedOrder.setOrderId(1);
         updatedOrder.setOrderDesc("Updated order description");
         updatedOrder.setOrderFee(1499.99);
+        updatedOrder.setCart(updatedCart);
         
         when(orderRepository.save(any(Order.class))).thenReturn(updatedOrder);
 

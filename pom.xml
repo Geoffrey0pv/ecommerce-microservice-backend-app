@@ -118,6 +118,19 @@
 				<groupId>org.springframework.boot</groupId>
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
+
+			<!-- Ensure tests don't try to import configuration from a remote config server -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<version>3.0.0-M7</version>
+				<configuration>
+					<systemPropertyVariables>
+						<!-- This will override any SPRING_CONFIG_IMPORT used in application.yml -->
+						<SPRING_CONFIG_IMPORT></SPRING_CONFIG_IMPORT>
+					</systemPropertyVariables>
+				</configuration>
+			</plugin>
 		</plugins>
 		<finalName>${project.artifactId}-v${project.version}</finalName>
 	</build>

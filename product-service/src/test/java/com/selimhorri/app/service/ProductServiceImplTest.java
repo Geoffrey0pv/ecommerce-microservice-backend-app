@@ -18,6 +18,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import com.selimhorri.app.domain.Product;
+import com.selimhorri.app.domain.Category;
+import com.selimhorri.app.dto.CategoryDto;
 import com.selimhorri.app.dto.ProductDto;
 import com.selimhorri.app.exception.wrapper.ProductNotFoundException;
 import com.selimhorri.app.repository.ProductRepository;
@@ -44,6 +46,15 @@ class ProductServiceImplTest {
 
     @BeforeEach
     void setUp() {
+        // Configurar categoría para las pruebas
+        Category category = new Category();
+        category.setCategoryId(1);
+        category.setCategoryTitle("Electronics");
+        
+        CategoryDto categoryDto = new CategoryDto();
+        categoryDto.setCategoryId(1);
+        categoryDto.setCategoryTitle("Electronics");
+        
         // Configurar datos de prueba
         product = new Product();
         product.setProductId(1);
@@ -52,6 +63,7 @@ class ProductServiceImplTest {
         product.setSku("DELL-XPS-15-001");
         product.setPriceUnit(1299.99);
         product.setQuantity(50);
+        product.setCategory(category);
         
         productDto = new ProductDto();
         productDto.setProductId(1);
@@ -60,16 +72,22 @@ class ProductServiceImplTest {
         productDto.setSku("DELL-XPS-15-001");
         productDto.setPriceUnit(1299.99);
         productDto.setQuantity(50);
+        productDto.setCategoryDto(categoryDto);
     }
 
     @Test
     @DisplayName("Test 1: Find all products - should return list of products")
     void testFindAll_ShouldReturnProductList() {
         // Given
+        Category category2 = new Category();
+        category2.setCategoryId(2);
+        category2.setCategoryTitle("Computers");
+        
         Product product2 = new Product();
         product2.setProductId(2);
         product2.setProductTitle("MacBook Pro");
         product2.setPriceUnit(1999.99);
+        product2.setCategory(category2);
         
         List<Product> products = Arrays.asList(product, product2);
         when(productRepository.findAll()).thenReturn(products);
@@ -151,10 +169,15 @@ class ProductServiceImplTest {
         productDto.setProductTitle("Updated Laptop Dell XPS 15");
         productDto.setPriceUnit(1399.99);
         
+        Category updatedCategory = new Category();
+        updatedCategory.setCategoryId(1);
+        updatedCategory.setCategoryTitle("Electronics");
+        
         Product updatedProduct = new Product();
         updatedProduct.setProductId(1);
         updatedProduct.setProductTitle("Updated Laptop Dell XPS 15");
         updatedProduct.setPriceUnit(1399.99);
+        updatedProduct.setCategory(updatedCategory);
         
         when(productRepository.save(any(Product.class))).thenReturn(updatedProduct);
 
