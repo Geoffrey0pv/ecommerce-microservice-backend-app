@@ -1,0 +1,11 @@
+# 🐍 Locust Requirements
+# Install these packages before running performance tests
+
+locust>=2.17.0
+requests>=2.31.0
+faker>=19.6.0
+numpy>=1.24.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+pandas>=2.0.0
+Pillow>=10.0.0
