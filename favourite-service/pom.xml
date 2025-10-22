@@ -8,6 +8,7 @@
 		<groupId>com.selimhorri</groupId>
 		<artifactId>ecommerce-microservice-backend</artifactId>
 		<version>0.1.0</version>
+		<relativePath>../pom.xml</relativePath>
 	</parent>
 	<artifactId>favourite-service</artifactId>
 	<name>favourite-service</name>

@@ -18,15 +18,18 @@ pipeline {
 
         stage('Compile') {
             steps {
-                dir("${SERVICE_DIR}") {
-                    script {
-                        // Usar contenedor Maven para Java 11 con Spring Boot
-                        docker.image('maven:3.8.4-openjdk-11').inside {
-                            sh '''
-                                mvn clean compile -Dspring.profiles.active=dev
-                                ls -la target/
-                            '''
-                        }
+                script {
+                    // Usar contenedor Maven para Java 11 con Spring Boot
+                    docker.image('maven:3.8.4-openjdk-11').inside {
+                        sh '''
+                            # Primero instalar el parent POM en el repositorio local Maven
+                            mvn clean install -N -Dspring.profiles.active=dev
+                            
+                            # Ahora compilar el servicio específico
+                            cd ${SERVICE_DIR}
+                            mvn clean compile -Dspring.profiles.active=dev
+                            ls -la target/
+                        '''
                     }
                 }
             }
@@ -34,13 +37,9 @@ pipeline {
 
         stage('Unit Testing') {
             steps {
-                dir("${SERVICE_DIR}") {
-                    script {
-                        docker.image('maven:3.8.4-openjdk-11').inside {
-                            sh '''
-                                mvn test -Dspring.profiles.active=dev
-                            '''
-                        }
+                script {
+                    docker.image('maven:3.8.4-openjdk-11').inside {
+                        sh "mvn test -Dspring.profiles.active=dev -pl ${SERVICE_DIR} -am"
                     }
                 }
             }
@@ -48,14 +47,10 @@ pipeline {
 
         stage('Package') {
             steps {
-                dir("${SERVICE_DIR}") {
-                    script {
-                        docker.image('maven:3.8.4-openjdk-11').inside {
-                            sh '''
-                                mvn package -DskipTests=true -Dspring.profiles.active=dev
-                                ls -la target/
-                            '''
-                        }
+                script {
+                    docker.image('maven:3.8.4-openjdk-11').inside {
+                        sh "mvn package -DskipTests=true -Dspring.profiles.active=dev -pl ${SERVICE_DIR} -am"
+                        sh "ls -la ${SERVICE_DIR}/target/"
                     }
                 }
             }
