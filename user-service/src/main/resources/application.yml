@@ -44,6 +44,10 @@ management:
   endpoint:
     health:
       show-details: always
+  metrics:
+    enable:
+      system: false
+      processor: false
 
 
 
