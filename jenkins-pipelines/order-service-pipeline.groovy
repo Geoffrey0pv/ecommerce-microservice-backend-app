@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         IMAGE_NAME = "order-service"
-        DOCKER_REGISTRY_USER = "geoffrey0pv"
+        GCP_PROJECT_ID = "your-gcp-project-id"
         SERVICE_DIR = "order-service"
         SPRING_PROFILES_ACTIVE = "dev"
     }
@@ -62,7 +62,8 @@ pipeline {
                     script {
                         def shortCommit = env.GIT_COMMIT.substring(0,7)
                         def imageTag = "latest-${env.BRANCH_NAME}"
-                        def fullImageName = "${DOCKER_REGISTRY_USER}/${IMAGE_NAME}"
+                        def fullImageName = "${GCR_REGISTRY}/${GCP_PROJECT_ID}/${IMAGE_NAME}"
+        GCP_REGION = "us-central1"
                         
                         echo "Construyendo imagen: ${fullImageName}:${imageTag}"
                         
@@ -84,7 +85,7 @@ pipeline {
         stage('Push Docker Image') {
             steps {
                 script {
-                    docker.withRegistry('', 'dockerhub-credentials') {
+                    // GCR Authentication handled in separate stage {
                         // Push ambos tags usando las variables de entorno
                         docker.image("${env.FULL_IMAGE_NAME}:${env.SHORT_COMMIT}").push()
                         docker.image("${env.FULL_IMAGE_NAME}:${env.FINAL_IMAGE_TAG}").push()

@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "zipkin.fullname" . }}
+  labels:
+    app: {{ include "zipkin.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "zipkin.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ include "zipkin.name" . }}
+    spec:
+      containers:
+        - name: zipkin
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.service.port }}
+          # Temporalmente deshabilitado para debugging
+          # readinessProbe:
+          #   httpGet:
+          #     path: {{ .Values.readinessProbe.path }}
+          #     port: {{ .Values.readinessProbe.port }}
+          #   initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+          #   periodSeconds: {{ .Values.readinessProbe.periodSeconds }}

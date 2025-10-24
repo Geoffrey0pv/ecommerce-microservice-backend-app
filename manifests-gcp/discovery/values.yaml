@@ -1,0 +1,32 @@
+fullnameOverride: discovery
+
+replicaCount: 1
+
+image:
+  repository: service-discovery
+  tag: "dev"
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 8761
+
+readinessProbe:
+  path: /actuator/health
+  port: 8761
+  initialDelaySeconds: 120
+  periodSeconds: 30
+
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: dev
+  - name: EUREKA_INSTANCE_HOSTNAME
+    value: discovery
+  - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
+    value: "false"
+  - name: EUREKA_CLIENT_FETCH_REGISTRY
+    value: "false"
+  - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+    value: http://discovery:8761/eureka/
+  - name: SERVER_PORT
+    value: "8761"

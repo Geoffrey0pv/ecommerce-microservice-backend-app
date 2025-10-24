@@ -1,0 +1,5 @@
+apiVersion: v2
+name: product-service
+description: Helm chart for the product microservice
+version: 0.1.0
+appVersion: "0.1.0"

@@ -3,7 +3,8 @@ pipeline {
 
     environment {
         IMAGE_NAME = "product-service"
-        DOCKER_REGISTRY_USER = "geoffrey0pv"
+        GCP_PROJECT_ID = "your-gcp-project-id"
+        GCP_REGION = "us-central1"
         SERVICE_DIR = "product-service"
         K8S_NAMESPACE = "ecommerce-staging"
         GCP_PROJECT = "ingesoft-taller2"
@@ -109,7 +110,7 @@ pipeline {
                         def shortCommit = env.GIT_COMMIT.substring(0,7)
                         def buildNumber = env.BUILD_NUMBER
                         def stageTag = "stage-${buildNumber}-${shortCommit}"
-                        def fullImageName = "${DOCKER_REGISTRY_USER}/${IMAGE_NAME}"
+                        def fullImageName = "${GCR_REGISTRY}/${GCP_PROJECT_ID}/${IMAGE_NAME}"
                         
                         echo "Construyendo imagen: ${fullImageName}:${stageTag}"
                         
