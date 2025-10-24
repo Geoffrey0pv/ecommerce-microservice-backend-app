@@ -1,0 +1,5 @@
+apiVersion: v2
+name: order-service
+description: Helm chart for the order microservice
+version: 0.1.0
+appVersion: "0.1.0"

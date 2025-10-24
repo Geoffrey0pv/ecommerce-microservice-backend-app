@@ -1,0 +1,42 @@
+# Values for user-service
+image:
+  repository: "geoffrey0pv/user-service"
+  pullPolicy: IfNotPresent
+  tag: "v4"
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 8080
+
+env:
+  SPRING_PROFILES_ACTIVE: "k8s"
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+# TEMPORALMENTE DESHABILITADO todos los health checks para debugging
+# livenessProbe:
+#   httpGet:
+#     path: /user-service/actuator/health
+#     port: http
+#   initialDelaySeconds: 180
+#   periodSeconds: 45
+#   timeoutSeconds: 15
+#   failureThreshold: 5
+
+# readinessProbe:
+#   httpGet:
+#     path: /user-service/actuator/health
+#     port: http
+#   initialDelaySeconds: 90
+#   periodSeconds: 15
+#   timeoutSeconds: 10
+#   failureThreshold: 5
