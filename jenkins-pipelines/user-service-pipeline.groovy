@@ -24,7 +24,6 @@ pipeline {
             }
         }
 
-        // --- PRUEBAS ESTÁTICAS (SOBRE EL CÓDIGO) ---
         stage('Compile') {
             steps {
                 script {
@@ -83,13 +82,13 @@ pipeline {
             }
         }
         
-        // --- CONSTRUCCIÓN Y ESCANEO (SOBRE LA IMAGEN) ---
         stage('Build Docker Image') {
             steps {
-                echo "Construyendo imagen: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
-                // docker.build requiere el contexto, -f especifica el Dockerfile
-                def customImage = docker.build("${FULL_IMAGE_NAME}:${IMAGE_TAG}", "-f ${SERVICE_DIR}/Dockerfile .")
-                customImage.tag("latest-dev")
+                script {
+                    echo "Construyendo imagen: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
+                    def customImage = docker.build("${FULL_IMAGE_NAME}:${IMAGE_TAG}", "-f ${SERVICE_DIR}/Dockerfile .")
+                    customImage.tag("latest-dev")
+                }
             }
         }
 
