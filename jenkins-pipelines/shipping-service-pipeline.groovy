@@ -57,12 +57,11 @@ pipeline {
                     docker.image('maven:3.8.4-openjdk-11').inside {
                         sh '''
                             echo "Análisis de calidad de código..."
-                            # --- CORRECCIÓN ---
-                            # Se añaden las flags '-pl ${SERVICE_DIR} -am' para que Maven 
-                            # resuelva el parent POM, igual que en las otras etapas.
+                            
+                            # Comando corregido sin backslashes (\) al final de las líneas
                             mvn verify sonar:sonar \
                                 -Dspring.profiles.active=dev \
-                                -pl ${SERVICE_DIR} -am \ 
+                                -pl ${SERVICE_DIR} -am \
                                 -Dsonar.projectKey=${IMAGE_NAME} \
                                 -Dsonar.host.url=http://sonarqube:9000 \
                                 -Dsonar.login=${SONAR_TOKEN} || echo "SonarQube no configurado"

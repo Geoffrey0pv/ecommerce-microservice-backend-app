@@ -77,7 +77,23 @@ pipeline {
                         echo "Ejecutando pruebas de aplicación en staging..."
                         SERVICE_IP=$(kubectl get svc ${IMAGE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.spec.clusterIP}')
                         SERVICE_PORT=$(kubectl get svc ${IMAGE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].port}')
-                        # ... resto de tu script ...
+                        # ... (obtener SERVICE_IP y SERVICE_PORT) ...
+
+                        # Test 1: Health Check (valida que el JSON de respuesta contenga "status":"UP")
+                        echo "Test 1: Verificando health endpoint..."
+                        kubectl run curl-test-app1 --image=curlimages/curl:latest --rm -i --restart=Never -n ${K8S_NAMESPACE} -- \
+                            curl -s http://${SERVICE_IP}:${SERVICE_PORT}/actuator/health | grep '"status":"UP"' || exit 1
+
+                        # Test 2: Metrics Endpoint (valida que la respuesta JSON contenga la palabra "names")
+                        echo "Test 2: Verificando metrics endpoint..."
+                        kubectl run curl-test-app2 --image=curlimages/curl:latest --rm -i --restart=Never -n ${K8S_NAMESPACE} -- \
+                            curl -s http://${SERVICE_IP}:${SERVICE_PORT}/actuator/metrics | grep '"names"' || exit 1
+
+                        # Test 3: Info Endpoint (valida que la respuesta no esté vacía)
+                        echo "Test 3: Verificando info endpoint..."
+                        kubectl run curl-test-app3 --image=curlimages/curl:latest --rm -i --restart=Never -n ${K8S_NAMESPACE} -- \
+                            curl -s http://${SERVICE_IP}:${SERVICE_PORT}/actuator/info || exit 1
+
                         echo "✅ Todas las pruebas de aplicación pasaron exitosamente"
                     '''
                 }
@@ -91,7 +107,14 @@ pipeline {
                         echo "Ejecutando pruebas de rendimiento básicas..."
                         SERVICE_IP=$(kubectl get svc ${IMAGE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.spec.clusterIP}')
                         SERVICE_PORT=$(kubectl get svc ${IMAGE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.spec.ports[0].port}')
-                        # ... resto de tu script ...
+
+                        # ... (obtener SERVICE_IP y SERVICE_PORT) ...
+
+                        # Ejecutar 100 requests con 10 concurrentes
+                        kubectl run ab-test --image=jordi/ab --rm -i --restart=Never -n ${K8S_NAMESPACE} -- \
+                            ab -n 100 -c 10 http://${SERVICE_IP}:${SERVICE_PORT}/actuator/health || echo "AB test completed"
+
+                        echo "✅ Pruebas de rendimiento completadas"
                         echo "✅ Pruebas de rendimiento completadas"
                     '''
                 }

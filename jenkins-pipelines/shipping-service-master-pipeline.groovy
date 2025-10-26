@@ -12,7 +12,6 @@ pipeline {
         SERVICE_DIR = "shipping-service"
         SPRING_PROFILES_ACTIVE = "prod"
         KUBERNETES_NAMESPACE = "ecommerce-production"
-        // Credencial de GKE (archivo de clave de servicio JSON)
         GCP_CREDENTIALS = credentials('gke-credentials') 
     }
 

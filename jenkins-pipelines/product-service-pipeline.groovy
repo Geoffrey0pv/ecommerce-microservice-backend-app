@@ -1,12 +1,9 @@
-// jenkins-pipelines/product-service-dev-pipeline.groovy
-// OBJETIVO: Construir, Probar Estáticamente, Escanear y Pushear el artefacto
 pipeline {
     agent any
     environment {
-        IMAGE_NAME = "product-service"
+        IMAGE_NAME = "shipping-service"
+        SERVICE_DIR = "shipping-service"
         GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
-        GCP_PROJECT_ID = "ecommerce-backend-1760307199"
-        SERVICE_DIR = "product-service" 
         SPRING_PROFILES_ACTIVE = "dev"
         GCP_CREDENTIALS = credentials('gke-credentials') 
     }
@@ -16,7 +13,6 @@ pipeline {
             steps {
                 checkout scm
                 script {
-                    // Guarda el Git Commit SHA para usarlo como tag inmutable
                     env.GIT_COMMIT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                     env.FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
                     env.IMAGE_TAG = "${env.GIT_COMMIT_SHA}"
@@ -25,7 +21,6 @@ pipeline {
             }
         }
 
-        // --- PRUEBAS ESTÁTICAS (SOBRE EL CÓDIGO) ---
         stage('Compile') {
             steps {
                 script {
@@ -44,7 +39,6 @@ pipeline {
             steps {
                 script {
                     docker.image('maven:3.8.4-openjdk-11').inside {
-                        // Ejecuta unitarias Y de integración (las que corren con Maven)
                         sh "mvn verify -Dspring.profiles.active=dev -pl ${SERVICE_DIR} -am"
                     }
                 }
@@ -58,18 +52,20 @@ pipeline {
 
         stage('Code Quality Analysis') {
             steps {
-                // Nota: Esta etapa asume que el directorio de Sonar es el del servicio
-                dir("${SERVICE_DIR}") { 
-                    script {
-                        docker.image('maven:3.8.4-openjdk-11').inside {
-                            sh '''
-                                echo "Análisis de calidad de código..."
-                                mvn verify sonar:sonar \
-                                    -Dsonar.projectKey=${IMAGE_NAME} \
-                                    -Dsonar.host.url=http://sonarqube:9000 \
-                                    -Dsonar.login=${SONAR_TOKEN} || echo "SonarQube no configurado"
-                            '''
-                        }
+                script {
+                    docker.image('maven:3.8.4-openjdk-11').inside {
+                        sh '''
+                            echo "Análisis de calidad de código..."
+                            # --- CORRECCIÓN ---
+                            # Se añaden las flags '-pl ${SERVICE_DIR} -am' para que Maven 
+                            # resuelva el parent POM, igual que en las otras etapas.
+                            mvn verify sonar:sonar \
+                                -Dspring.profiles.active=dev \
+                                -pl ${SERVICE_DIR} -am \ 
+                                -Dsonar.projectKey=${IMAGE_NAME} \
+                                -Dsonar.host.url=http://sonarqube:9000 \
+                                -Dsonar.login=${SONAR_TOKEN} || echo "SonarQube no configurado"
+                        '''
                     }
                 }
             }
@@ -87,11 +83,15 @@ pipeline {
         
         stage('Build Docker Image') {
             steps {
-                script {
-                    echo "Construyendo imagen: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
-                    // docker.build requiere el contexto ('.') sea el raíz del monorepo
-                    def customImage = docker.build("${FULL_IMAGE_NAME}:${IMAGE_TAG}", "-f ${SERVICE_DIR}/Dockerfile .")
-                    customImage.tag("latest-dev")
+                dir("${SERVICE_DIR}") {
+                    script {
+                        echo "Construyendo imagen: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
+                        
+                        // Ahora '-f Dockerfile .' se resuelve correctamente.
+                        def customImage = docker.build("${FULL_IMAGE_NAME}:${IMAGE_TAG}", "-f Dockerfile .")
+                        
+                        customImage.tag("latest-dev")
+                    }
                 }
             }
         }
@@ -119,9 +119,11 @@ pipeline {
         stage('Authenticate & Push Docker Image') {
             steps {
                 script {
+                    // Autenticarse en GCR/Artifact Registry
                     sh 'gcloud auth activate-service-account --key-file=$GCP_CREDENTIALS'
                     sh 'gcloud auth configure-docker us-central1-docker.pkg.dev --quiet'
 
+                    // Subir la imagen
                     docker.image("${env.FULL_IMAGE_NAME}:${env.IMAGE_TAG}").push()
                     docker.image("${env.FULL_IMAGE_NAME}:latest-dev").push()
                     

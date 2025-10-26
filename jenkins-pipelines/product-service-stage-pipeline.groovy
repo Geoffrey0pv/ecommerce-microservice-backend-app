@@ -68,8 +68,6 @@ pipeline {
             }
         }
 
-        // --- INICIO DE PRUEBAS DINÁMICAS (POST-DESPLIEGUE) ---
-
         stage('Smoke Tests on Staging') {
             steps {
                 script {
