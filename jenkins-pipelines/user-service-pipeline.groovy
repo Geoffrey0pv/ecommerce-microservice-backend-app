@@ -84,10 +84,14 @@ pipeline {
         
         stage('Build Docker Image') {
             steps {
-                script {
-                    echo "Construyendo imagen: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
-                    def customImage = docker.build("${FULL_IMAGE_NAME}:${IMAGE_TAG}", "-f ${SERVICE_DIR}/Dockerfile .")
-                    customImage.tag("latest-dev")
+                dir("${SERVICE_DIR}") {
+                    script {
+                        echo "Construyendo imagen: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
+                        
+                        def customImage = docker.build("${FULL_IMAGE_NAME}:${IMAGE_TAG}", "-f Dockerfile .")
+                        
+                        customImage.tag("latest-dev")
+                    }
                 }
             }
         }
