@@ -1,10 +1,10 @@
-// jenkins-pipelines/shipping-service-dev-pipeline.groovy
 pipeline {
     agent any
     environment {
         IMAGE_NAME = "shipping-service"
-        GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
         SERVICE_DIR = "shipping-service"
+
+        GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
         SPRING_PROFILES_ACTIVE = "dev"
         GCP_CREDENTIALS = credentials('gke-credentials') 
     }
@@ -14,7 +14,6 @@ pipeline {
             steps {
                 checkout scm
                 script {
-                    // Guarda el Git Commit SHA para usarlo como tag inmutable
                     env.GIT_COMMIT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                     env.FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
                     env.IMAGE_TAG = "${env.GIT_COMMIT_SHA}"
@@ -41,7 +40,6 @@ pipeline {
             steps {
                 script {
                     docker.image('maven:3.8.4-openjdk-11').inside {
-                        // Ejecuta unitarias Y de integración (las que corren con Maven)
                         sh "mvn verify -Dspring.profiles.active=dev -pl ${SERVICE_DIR} -am"
                     }
                 }
@@ -55,17 +53,20 @@ pipeline {
 
         stage('Code Quality Analysis') {
             steps {
-                dir("${SERVICE_DIR}") {
-                    script {
-                        docker.image('maven:3.8.4-openjdk-11').inside {
-                            sh '''
-                                echo "Análisis de calidad de código..."
-                                mvn verify sonar:sonar \
-                                    -Dsonar.projectKey=${IMAGE_NAME} \
-                                    -Dsonar.host.url=http://sonarqube:9000 \
-                                    -Dsonar.login=${SONAR_TOKEN} || echo "SonarQube no configurado"
-                            '''
-                        }
+                script {
+                    docker.image('maven:3.8.4-openjdk-11').inside {
+                        sh '''
+                            echo "Análisis de calidad de código..."
+                            # --- CORRECCIÓN ---
+                            # Se añaden las flags '-pl ${SERVICE_DIR} -am' para que Maven 
+                            # resuelva el parent POM, igual que en las otras etapas.
+                            mvn verify sonar:sonar \
+                                -Dspring.profiles.active=dev \
+                                -pl ${SERVICE_DIR} -am \ 
+                                -Dsonar.projectKey=${IMAGE_NAME} \
+                                -Dsonar.host.url=http://sonarqube:9000 \
+                                -Dsonar.login=${SONAR_TOKEN} || echo "SonarQube no configurado"
+                        '''
                     }
                 }
             }
@@ -81,13 +82,16 @@ pipeline {
             }
         }
         
-        // --- CONSTRUCCIÓN Y ESCANEO (SOBRE LA IMAGEN) ---
         stage('Build Docker Image') {
             steps {
-                script {
-                    echo "Construyendo imagen: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
-                    def customImage = docker.build("${FULL_IMAGE_NAME}:${IMAGE_TAG}", "-f ${SERVICE_DIR}/Dockerfile .")
-                    customImage.tag("latest-dev")
+                dir("${SERVICE_DIR}") {
+                    script {
+                        echo "Construyendo imagen: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
+                        
+                        def customImage = docker.build("${FULL_IMAGE_NAME}:${IMAGE_TAG}", "-f Dockerfile .")
+                        
+                        customImage.tag("latest-dev")
+                    }
                 }
             }
         }
@@ -97,13 +101,17 @@ pipeline {
                 script {
                     echo "Escaneando imagen ${FULL_IMAGE_NAME}:${IMAGE_TAG} para vulnerabilidades..."
                     sh """
-                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                        # Asegúrate de que el directorio de caché exista en el host
+                        mkdir -p $HOME/.trivy/cache
+
+                        docker run --rm \
+                            -v /var/run/docker.sock:/var/run/docker.sock \
+                            -v $HOME/.trivy/cache:/root/.cache/trivy \
                             aquasec/trivy:latest image \
                             --severity HIGH,CRITICAL \
                             --exit-code 1 \
                             ${FULL_IMAGE_NAME}:${IMAGE_TAG}
                     """
-                    // --exit-code 1 hace que el pipeline falle si encuentra vulnerabilidades
                 }
             }
         }

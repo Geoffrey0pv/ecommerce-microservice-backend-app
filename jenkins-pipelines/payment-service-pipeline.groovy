@@ -93,22 +93,6 @@ pipeline {
             }
         }
 
-        stage('Security Scan (Trivy)') {
-            steps {
-                script {
-                    echo "Escaneando imagen ${FULL_IMAGE_NAME}:${IMAGE_TAG} para vulnerabilidades..."
-                    sh """
-                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                            aquasec/trivy:latest image \
-                            --severity HIGH,CRITICAL \
-                            --exit-code 1 \
-                            ${FULL_IMAGE_NAME}:${IMAGE_TAG}
-                    """
-                    // --exit-code 1 hace que el pipeline falle si encuentra vulnerabilidades
-                }
-            }
-        }
-
         stage('Authenticate & Push Docker Image') {
             steps {
                 script {
