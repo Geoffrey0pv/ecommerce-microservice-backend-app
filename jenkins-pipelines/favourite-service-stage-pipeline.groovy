@@ -1,102 +1,16 @@
-// jenkins-pipelines/product-service-stage-pipeline.groovy
 pipeline {
     agent any
-    
-    parameters {
-        string(name: 'IMAGE_TO_DEPLOY', defaultValue: '', description: 'Full image name with tag to deploy to staging')
-    }
-    
+
     environment {
-        IMAGE_NAME = "product-service"
-        GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
-        SERVICE_DIR = "product-service"
-        SPRING_PROFILES_ACTIVE = "stage"
-        KUBERNETES_NAMESPACE = "ecommerce-staging"
-        // Credencial de GKE (archivo de clave de servicio JSON)
-        GCP_CREDENTIALS = credentials('gke-credentials') 
+        IMAGE_NAME = "favourite-service"
+        GCP_PROJECT_ID = "your-gcp-project-id"
+        GCP_REGION = "us-central1"
+        SERVICE_DIR = "favourite-service"
+        K8S_NAMESPACE = "ecommerce-staging"
+        GCP_PROJECT = "ingesoft-taller2"
+        GKE_CLUSTER = "ecommerce-staging-cluster"
+        GKE_ZONE = "us-central1-b"
     }
-
-    stages {
-        stage('Validate Parameters') {
-            steps {
-                script {
-                    if (!params.IMAGE_TO_DEPLOY) {
-                        error("IMAGE_TO_DEPLOY parameter is required")
-                    }
-                    echo "Desplegando imagen ya construida: ${params.IMAGE_TO_DEPLOY}"
-                }
-            }
-        }
-        
-        stage('Authenticate GCP') {
-            steps {
-                script {
-                    sh 'gcloud auth activate-service-account --key-file=$GCP_CREDENTIALS'
-                    sh 'gcloud container clusters get-credentials ecommerce-gke-cluster --zone us-central1-a --project ecommerce-backend-1760307199'
-                }
-            }
-        }
-        
-        stage('Deploy to Staging') {
-            steps {
-                script {
-                    echo "Desplegando ${params.IMAGE_TO_DEPLOY} a ambiente staging..."
-                    
-                    // Asegurar que el namespace existe
-                    sh "kubectl create namespace ${KUBERNETES_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -"
-                    
-                    // Crear el deployment con la imagen específica
-                    sh """
-                        kubectl set image deployment/${IMAGE_NAME} ${IMAGE_NAME}=${params.IMAGE_TO_DEPLOY} -n ${KUBERNETES_NAMESPACE} || \
-                        kubectl create deployment ${IMAGE_NAME} --image=${params.IMAGE_TO_DEPLOY} -n ${KUBERNETES_NAMESPACE}
-                        
-                        kubectl expose deployment ${IMAGE_NAME} --port=8082 --target-port=8082 -n ${KUBERNETES_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                        
-                        kubectl rollout status deployment/${IMAGE_NAME} -n ${KUBERNETES_NAMESPACE} --timeout=300s
-                    """
-                }
-            }
-        }
-        
-        stage('Health Check') {
-            steps {
-                script {
-                    echo "Verificando salud del servicio desplegado..."
-                    sh """
-                        kubectl wait --for=condition=ready pod -l app=${IMAGE_NAME} -n ${KUBERNETES_NAMESPACE} --timeout=300s
-                        kubectl get pods -l app=${IMAGE_NAME} -n ${KUBERNETES_NAMESPACE}
-                    """
-                }
-            }
-        }
-        
-        stage('Smoke Tests') {
-            steps {
-                script {
-                    echo "Ejecutando smoke tests para validar despliegue..."
-                    sh """
-                        echo "Validando endpoints básicos del servicio..."
-                        # Aquí irían las pruebas básicas de funcionalidad
-                        echo "Smoke tests completados"
-                    """
-                }
-            }
-        }
-    }
-
-    post {
-        success {
-            echo "Despliegue a STAGING de ${params.IMAGE_TO_DEPLOY} completado exitosamente."
-        }
-        always {
-            cleanWs()
-            sh 'gcloud auth revoke --all || true'
-        }
-        failure {
-            echo "Despliegue a STAGING falló para ${params.IMAGE_TO_DEPLOY}"
-        }
-    }
-}
 
     stages {
         stage('Checkout') {

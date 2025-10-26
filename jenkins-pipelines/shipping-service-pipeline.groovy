@@ -1,10 +1,10 @@
-// jenkins-pipelines/order-service-dev-pipeline.groovy
+// jenkins-pipelines/shipping-service-dev-pipeline.groovy
 pipeline {
     agent any
     environment {
-        IMAGE_NAME = "order-service"
+        IMAGE_NAME = "shipping-service"
         GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
-        SERVICE_DIR = "order-service"
+        SERVICE_DIR = "shipping-service"
         SPRING_PROFILES_ACTIVE = "dev"
         // Credencial de GKE (archivo de clave de servicio JSON)
         GCP_CREDENTIALS = credentials('gke-credentials') 

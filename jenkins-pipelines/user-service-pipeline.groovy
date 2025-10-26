@@ -58,39 +58,34 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                dir("${SERVICE_DIR}") {
-                    script {
-                        def shortCommit = env.GIT_COMMIT.substring(0,7)
-                        def imageTag = "latest-${env.BRANCH_NAME}"
-                        def fullImageName = "${GCR_REGISTRY}/${GCP_PROJECT_ID}/${IMAGE_NAME}"
-        GCP_REGION = "us-central1"
-                        
-                        echo "Construyendo imagen: ${fullImageName}:${imageTag}"
-                        
-                        // Construir imagen directamente con el nombre completo
-                        def customImage = docker.build("${fullImageName}:${shortCommit}", ".")
-                        
-                        // Tagear con la versión de la rama
-                        customImage.tag(imageTag)
-                        
-                        // Guardar variables para el siguiente stage
-                        env.FINAL_IMAGE_TAG = imageTag
-                        env.SHORT_COMMIT = shortCommit
-                        env.FULL_IMAGE_NAME = fullImageName
-                    }
+                script {
+                    env.FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
+                    env.IMAGE_TAG = "${env.GIT_COMMIT_SHA}" // Tag inmutable
+                    
+                    echo "Construyendo imagen: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
+                    
+                    // Asegúrate que el contexto ('.') es el directorio raíz del monorepo
+                    def customImage = docker.build("${FULL_IMAGE_NAME}:${IMAGE_TAG}", "-f ${SERVICE_DIR}/Dockerfile .")
+                    
+                    // También etiqueta como 'latest-dev' para saber cuál es la última de develop
+                    customImage.tag("latest-dev")
                 }
             }
         }
-
-        stage('Push Docker Image') {
+        
+        stage('Authenticate & Push Docker Image') {
             steps {
                 script {
-                    // GCR Authentication handled in separate stage {
-                        // Push ambos tags usando las variables de entorno
-                        docker.image("${env.FULL_IMAGE_NAME}:${env.SHORT_COMMIT}").push()
-                        docker.image("${env.FULL_IMAGE_NAME}:${env.FINAL_IMAGE_TAG}").push()
+                    // Usa las credenciales de GKE/GCP que configuraste en Jenkins
+                    withCredentials([file(credentialsId: 'gke-credentials', variable: 'GCP_KEY_FILE')]) {
+                        sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
+                        sh 'gcloud auth configure-docker us-central1-docker.pkg.dev --quiet'
+
+                        // Pushear ambos tags
+                        docker.image("${env.FULL_IMAGE_NAME}:${env.IMAGE_TAG}").push()
+                        docker.image("${env.FULL_IMAGE_NAME}:latest-dev").push()
                         
-                        echo "Imagen publicada: ${env.FULL_IMAGE_NAME}:${env.FINAL_IMAGE_TAG}"
+                        echo "Imagen publicada: ${env.FULL_IMAGE_NAME}:${env.IMAGE_TAG}"
                     }
                 }
             }
@@ -99,31 +94,14 @@ pipeline {
 
     post {
         success {
-            script {
-                if (env.BRANCH_NAME == 'master') {
-                    echo "Disparando el pipeline de integracion..."
-                    
-                    try {
-                        build job: 'ecommerce-integration/master',
-                              parameters: [
-                                  string(name: 'TRIGGERING_SERVICE', value: "${IMAGE_NAME}"),
-                                  string(name: 'IMAGE_TAG', value: "${env.FINAL_IMAGE_TAG}")
-                              ],
-                              wait: false
-                        echo "Pipeline de integracion disparado exitosamente"
-                    } catch (Exception e) {
-                        echo "Error al disparar pipeline de integracion: ${e.getMessage()}"
-                    }
-                } else {
-                    echo "Branch '${env.BRANCH_NAME}' - No se dispara integracion (solo master)"
-                }
-            }
+            echo "Pipeline de Build [${IMAGE_NAME}] completado exitosamente."
+            // Aquí podrías disparar automáticamente el pipeline de Staging
         }
         always {
             cleanWs()
         }
         failure {
-            echo "Build fallo para ${IMAGE_NAME}"
+            echo "Build falló para ${IMAGE_NAME}"
         }
     }
 }

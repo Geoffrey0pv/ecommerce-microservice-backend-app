@@ -1,4 +1,4 @@
-// jenkins-pipelines/product-service-stage-pipeline.groovy
+// jenkins-pipelines/shipping-service-stage-pipeline.groovy
 pipeline {
     agent any
     
@@ -7,9 +7,9 @@ pipeline {
     }
     
     environment {
-        IMAGE_NAME = "product-service"
+        IMAGE_NAME = "shipping-service"
         GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
-        SERVICE_DIR = "product-service"
+        SERVICE_DIR = "shipping-service"
         SPRING_PROFILES_ACTIVE = "stage"
         KUBERNETES_NAMESPACE = "ecommerce-staging"
         // Credencial de GKE (archivo de clave de servicio JSON)
@@ -50,7 +50,7 @@ pipeline {
                         kubectl set image deployment/${IMAGE_NAME} ${IMAGE_NAME}=${params.IMAGE_TO_DEPLOY} -n ${KUBERNETES_NAMESPACE} || \
                         kubectl create deployment ${IMAGE_NAME} --image=${params.IMAGE_TO_DEPLOY} -n ${KUBERNETES_NAMESPACE}
                         
-                        kubectl expose deployment ${IMAGE_NAME} --port=8082 --target-port=8082 -n ${KUBERNETES_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        kubectl expose deployment ${IMAGE_NAME} --port=8085 --target-port=8085 -n ${KUBERNETES_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         
                         kubectl rollout status deployment/${IMAGE_NAME} -n ${KUBERNETES_NAMESPACE} --timeout=300s
                     """
