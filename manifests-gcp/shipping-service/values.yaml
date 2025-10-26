@@ -1,0 +1,45 @@
+# Default values for shipping-service
+replicaCount: 2
+
+image:
+  repository: gcr.io/your-gcp-project-id/shipping-service
+  tag: latest-master
+  pullPolicy: IfNotPresent
+
+service:
+  type: LoadBalancer
+  port: 8084
+  targetPort: 8084
+
+ingress:
+  enabled: true
+  className: "gce"
+  hosts:
+    - host: shipping-service.your-domain.com
+      paths:
+        - path: /
+          pathType: Prefix
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Configuración específica del servicio
+config:
+  springProfiles: production
+  serverPort: 8084
+  
+# Health checks
+healthCheck:
+  enabled: true
+  path: /actuator/health
+  initialDelaySeconds: 90
+  periodSeconds: 30

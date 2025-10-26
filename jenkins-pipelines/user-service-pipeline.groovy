@@ -1,45 +1,73 @@
+// jenkins-pipelines/user-service-dev-pipeline.groovy
 pipeline {
     agent any
-
     environment {
         IMAGE_NAME = "user-service"
-        GCP_PROJECT_ID = "your-gcp-project-id"
+        GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
         SERVICE_DIR = "user-service"
         SPRING_PROFILES_ACTIVE = "dev"
+        // Credencial de GKE (archivo de clave de servicio JSON)
+        GCP_CREDENTIALS = credentials('gke-credentials') 
     }
 
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
-                echo "Procesando cambios en ${IMAGE_NAME}"
+                script {
+                    // Guarda el Git Commit SHA para usarlo como tag inmutable
+                    env.GIT_COMMIT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    env.FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
+                    env.IMAGE_TAG = "${env.GIT_COMMIT_SHA}"
+                }
+                echo "Procesando Build para ${IMAGE_NAME} commit ${IMAGE_TAG}"
             }
         }
 
+        // --- PRUEBAS ESTÁTICAS (SOBRE EL CÓDIGO) ---
         stage('Compile') {
             steps {
                 script {
-                    // Usar contenedor Maven para Java 11 con Spring Boot
                     docker.image('maven:3.8.4-openjdk-11').inside {
                         sh '''
-                            # Primero instalar el parent POM en el repositorio local Maven
                             mvn clean install -N -Dspring.profiles.active=dev
-                            
-                            # Ahora compilar el servicio específico
                             cd ${SERVICE_DIR}
                             mvn clean compile -Dspring.profiles.active=dev
-                            ls -la target/
                         '''
                     }
                 }
             }
         }
 
-        stage('Unit Testing') {
+        stage('Unit & Integration Tests (Maven)') {
             steps {
                 script {
                     docker.image('maven:3.8.4-openjdk-11').inside {
-                        sh "mvn test -Dspring.profiles.active=dev -pl ${SERVICE_DIR} -am"
+                        // Ejecuta unitarias Y de integración (las que corren con Maven)
+                        sh "mvn verify -Dspring.profiles.active=dev -pl ${SERVICE_DIR} -am"
+                    }
+                }
+            }
+            post {
+                always {
+                    junit '**/target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+        stage('Code Quality Analysis') {
+            steps {
+                dir("${SERVICE_DIR}") {
+                    script {
+                        docker.image('maven:3.8.4-openjdk-11').inside {
+                            sh '''
+                                echo "Análisis de calidad de código..."
+                                mvn verify sonar:sonar \
+                                    -Dsonar.projectKey=${IMAGE_NAME} \
+                                    -Dsonar.host.url=http://sonarqube:9000 \
+                                    -Dsonar.login=${SONAR_TOKEN} || echo "SonarQube no configurado"
+                            '''
+                        }
                     }
                 }
             }
@@ -50,43 +78,49 @@ pipeline {
                 script {
                     docker.image('maven:3.8.4-openjdk-11').inside {
                         sh "mvn package -DskipTests=true -Dspring.profiles.active=dev -pl ${SERVICE_DIR} -am"
-                        sh "ls -la ${SERVICE_DIR}/target/"
                     }
-                }
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                script {
-                    env.FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
-                    env.IMAGE_TAG = "${env.GIT_COMMIT_SHA}" // Tag inmutable
-                    
-                    echo "Construyendo imagen: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
-                    
-                    // Asegúrate que el contexto ('.') es el directorio raíz del monorepo
-                    def customImage = docker.build("${FULL_IMAGE_NAME}:${IMAGE_TAG}", "-f ${SERVICE_DIR}/Dockerfile .")
-                    
-                    // También etiqueta como 'latest-dev' para saber cuál es la última de develop
-                    customImage.tag("latest-dev")
                 }
             }
         }
         
+        // --- CONSTRUCCIÓN Y ESCANEO (SOBRE LA IMAGEN) ---
+        stage('Build Docker Image') {
+            steps {
+                echo "Construyendo imagen: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
+                // docker.build requiere el contexto, -f especifica el Dockerfile
+                def customImage = docker.build("${FULL_IMAGE_NAME}:${IMAGE_TAG}", "-f ${SERVICE_DIR}/Dockerfile .")
+                customImage.tag("latest-dev")
+            }
+        }
+
+        stage('Security Scan (Trivy)') {
+            steps {
+                script {
+                    echo "Escaneando imagen ${FULL_IMAGE_NAME}:${IMAGE_TAG} para vulnerabilidades..."
+                    sh """
+                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+                            aquasec/trivy:latest image \
+                            --severity HIGH,CRITICAL \
+                            --exit-code 1 \
+                            ${FULL_IMAGE_NAME}:${IMAGE_TAG}
+                    """
+                    // --exit-code 1 hace que el pipeline falle si encuentra vulnerabilidades
+                }
+            }
+        }
+
         stage('Authenticate & Push Docker Image') {
             steps {
                 script {
-                    // Usa las credenciales de GKE/GCP que configuraste en Jenkins
-                    withCredentials([file(credentialsId: 'gke-credentials', variable: 'GCP_KEY_FILE')]) {
-                        sh 'gcloud auth activate-service-account --key-file=$GCP_KEY_FILE'
-                        sh 'gcloud auth configure-docker us-central1-docker.pkg.dev --quiet'
+                    // Autenticarse en GCR/Artifact Registry
+                    sh 'gcloud auth activate-service-account --key-file=$GCP_CREDENTIALS'
+                    sh 'gcloud auth configure-docker us-central1-docker.pkg.dev --quiet'
 
-                        // Pushear ambos tags
-                        docker.image("${env.FULL_IMAGE_NAME}:${env.IMAGE_TAG}").push()
-                        docker.image("${env.FULL_IMAGE_NAME}:latest-dev").push()
-                        
-                        echo "Imagen publicada: ${env.FULL_IMAGE_NAME}:${env.IMAGE_TAG}"
-                    }
+                    // Subir la imagen
+                    docker.image("${env.FULL_IMAGE_NAME}:${env.IMAGE_TAG}").push()
+                    docker.image("${env.FULL_IMAGE_NAME}:latest-dev").push()
+                    
+                    echo "Imagen publicada: ${env.FULL_IMAGE_NAME}:${env.IMAGE_TAG}"
                 }
             }
         }
@@ -95,10 +129,11 @@ pipeline {
     post {
         success {
             echo "Pipeline de Build [${IMAGE_NAME}] completado exitosamente."
-            // Aquí podrías disparar automáticamente el pipeline de Staging
         }
         always {
             cleanWs()
+            // Limpiar credenciales de GCloud
+            sh 'gcloud auth revoke --all || true'
         }
         failure {
             echo "Build falló para ${IMAGE_NAME}"

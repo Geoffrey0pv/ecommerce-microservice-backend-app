@@ -1,0 +1,39 @@
+# Default values for payment-service
+replicaCount: 1
+
+image:
+  repository: geoffrey0pv/payment-service
+  tag: latest-master
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8083
+  targetPort: 8083
+
+ingress:
+  enabled: false
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Configuración específica del servicio
+config:
+  springProfiles: dev
+  serverPort: 8083
+  
+# Health checks
+healthCheck:
+  enabled: true
+  path: /actuator/health
+  initialDelaySeconds: 60
+  periodSeconds: 30
