@@ -5,55 +5,34 @@ pipeline {
         IMAGE_NAME = "user-service"
         GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
         FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
+        IMAGE_TAG = "latest-dev" 
         
         // Credenciales
         GCP_CREDENTIALS = credentials('gke-credentials')
         GCP_PROJECT = "ecommerce-backend-1760307199"
         
-        // Clúster (Nombres de variables corregidos)
+        // Clúster
         CLUSTER_NAME = "ecommerce-devops-cluster" 
-        CLUSTER_LOCATION_FLAG = "--region=us-central1"
+        CLUSTER_LOCATION_FLAG = "--region=us-central1" // O usa --zone si es zonal
         
         // Kubernetes
         K8S_NAMESPACE = "staging"
-        K8S_DEPLOYMENT_NAME = "user-service" 
-        K8S_CONTAINER_NAME = "user-service"  
+        K8S_DEPLOYMENT_NAME = "user-service"
+        K8S_CONTAINER_NAME = "user-service"
         K8S_SERVICE_NAME = "user-service"
-        SERVICE_PORT = "8200" 
+        SERVICE_PORT = "8200"
         
         // Gateway para Pruebas
         API_GATEWAY_SERVICE_NAME = "proxy-client" 
     }
-
-    // Parámetros para ejecución manual o PR
-    parameters {
-        string(
-            name: 'IMAGE_TAG_MANUAL', 
-            defaultValue: '', 
-            description: 'Dejar vacío para PRs. Llenar para corridas manuales (ej: latest-dev o un SHA)'
-        )
-    }
-
+    
     stages {
         
-        stage('Validate Context & Get Image Tag') {
+        stage('Checkout SCM') {
             steps {
-                script {
-                    checkout scm
-                    
-                    if (params.IMAGE_TAG_MANUAL) {
-                        echo "🏃 Ejecución Manual detectada."
-                        env.IMAGE_TAG = params.IMAGE_TAG_MANUAL
-                    } else if (env.CHANGE_TARGET == 'staging' && env.CHANGE_BRANCH == 'develop') {
-                        echo "🔄 PR de develop -> staging detectado."
-                        env.IMAGE_TAG = sh(script: "git rev-parse --short origin/${env.CHANGE_BRANCH}", returnStdout: true).trim()
-                    } else {
-                        echo "🏃 Ejecución de Rama detectada (no PR)."
-                        env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    }
-                    
-                    echo "📦 Imagen a desplegar: ${FULL_IMAGE_NAME}:${env.IMAGE_TAG}"
-                }
+                checkout scm
+                echo "📦 Iniciando despliegue a STAGING"
+                echo "📦 Imagen a desplegar: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
 
@@ -76,10 +55,10 @@ pipeline {
             steps {
                 script {
                     sh """
-                        echo "🔍 Verificando ${FULL_IMAGE_NAME}:${IMAGE_TAG}..."
-                        gcloud artifacts docker images describe ${FULL_IMAGE_NAME}:${IMAGE_TAG} || {
+                        echo "🔍 Verificando \${FULL_IMAGE_NAME}:\${IMAGE_TAG}..."
+                        gcloud artifacts docker images describe \${FULL_IMAGE_NAME}:\${IMAGE_TAG} || {
                             echo "❌ ERROR: Imagen no encontrada"
-                            gcloud artifacts docker images list ${GCR_REGISTRY}/${IMAGE_NAME} --include-tags --limit=10 --sort-by=~UPDATE_TIME
+                            echo "Asegúrate de que el pipeline de DEV ('user-service-pipeline.groovy') haya corrido exitosamente."
                             exit 1
                         }
                         echo "✅ Imagen verificada."
@@ -92,13 +71,13 @@ pipeline {
             steps {
                 script {
                     sh """
-                        echo "🚀 Desplegando a ${K8S_NAMESPACE}..."
+                        echo "🚀 Desplegando a \${K8S_NAMESPACE}..."
                         kubectl create namespace \${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         
                         echo "📋 Aplicando manifiestos desde manifests-gcp/user-service/..."
                         kubectl apply -f manifests-gcp/user-service/ -n \${K8S_NAMESPACE}
                         
-                        echo "🔄 Actualizando la imagen del deployment ${K8S_DEPLOYMENT_NAME}..."
+                        echo "🔄 Actualizando la imagen del deployment \${K8S_DEPLOYMENT_NAME}..."
                         kubectl set image deployment/\${K8S_DEPLOYMENT_NAME} \
                             \${K8S_CONTAINER_NAME}=\${FULL_IMAGE_NAME}:\${IMAGE_TAG} \
                             -n \${K8S_NAMESPACE} --record
@@ -195,13 +174,14 @@ pipeline {
                 }
             }
         }
-    } 
+    }
+
     post {
         success {
             script {
                 sh """
                     echo "🎉 ✅ STAGING DEPLOY EXITOSO"
-                    echo "📦 Imagen desplegada: \${FULL_IMAGE_NAME}:\${env.IMAGE_TAG}"
+                    echo "📦 Imagen desplegada: \${FULL_IMAGE_NAME}:\${IMAGE_TAG}"
                     gcloud auth revoke --all || true
                 """
             }
