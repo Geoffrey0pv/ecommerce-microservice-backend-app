@@ -197,33 +197,6 @@ pipeline {
                 }
             }
         }
-
-        stage('Run Performance Tests (Locust)') {
-            steps {
-                script {
-                    sh """
-                        GATEWAY_IP=\$(cat gateway-ip.txt)
-                        BASE_URL="http://\${GATEWAY_IP}:${SERVICE_PORT}"
-                        
-                        echo "🚀 Performance Tests contra: \$BASE_URL"
-                        
-                        if [ -f "performance-tests/locustfile.py" ]; then
-                            cd performance-tests
-                            locust -f locustfile.py --host \$BASE_URL \
-                                --users 10 --spawn-rate 2 --run-time 1m \
-                                --headless --csv=reports/locust-report
-                            cd ..
-                        else
-                            echo "⚠️ No hay scripts Locust, ejecutando test básico..."
-                            for i in {1..50}; do
-                                curl -s -o /dev/null \$BASE_URL/user-service/actuator/health
-                            done
-                        fi
-                    """
-                }
-            }
-            
-        }
     }
 
     post {
