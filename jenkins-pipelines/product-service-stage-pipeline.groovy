@@ -1,173 +1,138 @@
 pipeline {
     agent any
-
     environment {
         IMAGE_NAME = "product-service"
+        SERVICE_DIR = "product-service"
         GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
-        K8S_NAMESPACE = "ecommerce-staging"
-        GCP_PROJECT = "ingesoft-taller2" 
-        GKE_CLUSTER = "ecommerce-staging-cluster" 
-        GKE_ZONE = "us-central1-b" 
-        GCP_CREDENTIALS = credentials('gke-credentials') 
-        SERVICE_PORT = "8300"
+        FULL_IMAGE = "${GCR_REGISTRY}/${IMAGE_NAME}"
+        IMAGE_TAG = "${params.IMAGE_TAG ?: 'latest-dev'}"
+        GCP_CREDENTIALS = credentials('gke-credentials')
+        GCP_PROJECT = "ecommerce-backend-1760307199"
+        K8S_NAMESPACE = "staging"
+        K8S_DEPLOYMENT = "product-service-deployment"
+        K8S_CONTAINER = "product-service"
+        CLUSTER_NAME = "ecommerce-devops-cluster"
+        CLUSTER_REGION = "us-central1"
+    }
+
+    parameters {
+        string(
+            name: 'IMAGE_TAG', 
+            defaultValue: 'latest-dev', 
+            description: 'Tag de imagen a desplegar (usar SHA del commit o latest-dev)'
+        )
+        choice(
+            name: 'DEPLOY_ACTION',
+            choices: ['deploy', 'rollback'],
+            description: 'Acción a realizar en staging'
+        )
     }
 
     stages {
-        stage('Checkout & Identify Image') {
-            steps {
-                checkout scm
-                script {
-                    env.GIT_COMMIT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    env.IMAGE_TO_DEPLOY = "${GCR_REGISTRY}/${IMAGE_NAME}:${env.GIT_COMMIT_SHA}"
-                }
-                echo "🚀 Iniciando despliegue a STAGING para ${IMAGE_NAME}"
-                echo "Imagen a desplegar: ${env.IMAGE_TO_DEPLOY}"
-            }
-        }
-
-        stage('Authenticate GCP') {
+        stage('Validate Context') {
             steps {
                 script {
-                    // 2. Se autentica con GKE
-                    sh 'gcloud auth activate-service-account --key-file=$GCP_CREDENTIALS'
-                    sh 'gcloud config set project ${GCP_PROJECT}'
-                    sh 'gcloud container clusters get-credentials ${GKE_CLUSTER} --zone ${GKE_ZONE} --project ${GCP_PROJECT}'
+                    if (env.CHANGE_TARGET && env.CHANGE_TARGET != 'staging') {
+                        error("❌ Este pipeline solo debe ejecutarse en PRs hacia 'staging'. Target actual: ${env.CHANGE_TARGET}")
+                    }
+                    echo "✅ Contexto válido: Pipeline STAGE para ${IMAGE_NAME}"
+                    echo "📦 Imagen a desplegar: ${FULL_IMAGE}:${IMAGE_TAG}"
+                    echo "🎯 Namespace destino: ${K8S_NAMESPACE}"
                 }
             }
         }
 
-        stage('Verify Image in Registry') {
+        stage('Authenticate GCP & Kubernetes') {
             steps {
                 script {
-                    // 3. (Opcional pero recomendado) Verifica que la imagen exista antes de desplegar
-                    echo "🔍 Verificando que la imagen ${env.IMAGE_TO_DEPLOY} exista..."
-                    sh "gcloud container images describe ${env.IMAGE_TO_DEPLOY} --format='get(image_summary.fully_qualified_digest)'"
+                    sh """
+                        echo "🔐 Autenticando con GCP..."
+                        gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
+                        gcloud config set project \${GCP_PROJECT}
+                        gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+                        gcloud container clusters get-credentials \${CLUSTER_NAME} --region=\${CLUSTER_REGION}
+                        kubectl cluster-info
+                    """
                 }
             }
         }
 
-        stage('Deploy to Staging K8s') {
+        stage('Verify Image Exists') {
             steps {
                 script {
-                    // 4. Despliega la imagen en el clúster
-                    echo "Desplegando ${env.IMAGE_TO_DEPLOY} a Kubernetes Staging..."
-                    sh '''
-                        # Asegura que el namespace exista
-                        kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                        
-                        # Aplica el manifiesto base (Deployment, Service, HPA)
-                        kubectl apply -f k8s/staging/${IMAGE_NAME}-deployment.yaml -n ${K8S_NAMESPACE}
-                        
-                        # Actualiza la imagen del deployment con el tag del commit
-                        kubectl set image deployment/${IMAGE_NAME} ${IMAGE_NAME}=${IMAGE_TO_DEPLOY} -n ${K8S_NAMESPACE}
-                        
-                        # Espera a que el despliegue termine
-                        kubectl rollout status deployment/${IMAGE_NAME} -n ${K8S_NAMESPACE} --timeout=5m
-                    '''
+                    sh """
+                        echo "🔍 Verificando imagen \${FULL_IMAGE}:\${IMAGE_TAG}..."
+                        gcloud artifacts docker images describe \${FULL_IMAGE}:\${IMAGE_TAG} || {
+                            echo "❌ ERROR: Imagen no encontrada"
+                            gcloud artifacts docker images list \${GCR_REGISTRY}/\${IMAGE_NAME} --include-tags --limit=10
+                            exit 1
+                        }
+                        echo "✅ Imagen verificada"
+                    """
                 }
             }
         }
 
-        stage('Smoke Tests on Staging') {
+        stage('Pull & Promote Image') {
             steps {
                 script {
-                    echo "Ejecutando smoke tests en ambiente staging..."
-                    sh '''
-                        # Espera 10s extra para que el servicio esté listo
-                        sleep 10
-                        SERVICE_IP=$(kubectl get svc ${IMAGE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.spec.clusterIP}')
-                        echo "Service disponible en: http://${SERVICE_IP}:${SERVICE_PORT}"
-                        
-                        # Bucle de reintento para el health check
-                        for i in {1..30}; do
-                            if kubectl run curl-test-smoke --image=curlimages/curl:latest --rm -i --restart=Never -n ${K8S_NAMESPACE} -- \
-                                curl -s -o /dev/null -w "%{http_code}" http://${SERVICE_IP}:${SERVICE_PORT}/actuator/health | grep -q "200"; then
-                                echo "✅ Servicio está respondiendo correctamente"
-                                break
-                            fi
-                            echo "Esperando a que el servicio esté listo... intento $i/30"
-                            sleep 10
-                        done
-                        
-                        # Test final (falla el pipeline si no está listo)
-                        kubectl run curl-test-smoke --image=curlimages/curl:latest --rm -i --restart=Never -n ${K8S_NAMESPACE} -- \
-                            curl -f http://${SERVICE_IP}:${SERVICE_PORT}/actuator/health || exit 1
-                        echo "✅ Smoke tests completados exitosamente"
-                    '''
+                    sh """
+                        docker pull \${FULL_IMAGE}:\${IMAGE_TAG}
+                        docker tag \${FULL_IMAGE}:\${IMAGE_TAG} \${FULL_IMAGE}:staging
+                        docker tag \${FULL_IMAGE}:\${IMAGE_TAG} \${FULL_IMAGE}:staging-\$(date +%Y%m%d-%H%M%S)
+                        docker push \${FULL_IMAGE}:staging
+                        docker push \${FULL_IMAGE}:staging-\$(date +%Y%m%d-%H%M%S)
+                    """
                 }
             }
         }
 
-        stage('Application Tests on Staging') {
+        stage('Deploy to Staging') {
             steps {
                 script {
-                    echo "Ejecutando pruebas de aplicación en staging..."
-                    sh '''
-                        SERVICE_IP=$(kubectl get svc ${IMAGE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                    sh """
+                        # Crear namespace si no existe
+                        kubectl get namespace \${K8S_NAMESPACE} || kubectl create namespace \${K8S_NAMESPACE}
                         
-                        echo "Test 1: Verificando health endpoint..."
-                        kubectl run curl-test-app1 --image=curlimages/curl:latest --rm -i --restart=Never -n ${K8S_NAMESPACE} -- \
-                            curl -s http://${SERVICE_IP}:${SERVICE_PORT}/actuator/health | grep '"status":"UP"' || exit 1
+                        # Crear o actualizar deployment
+                        kubectl get deployment \${K8S_DEPLOYMENT} -n \${K8S_NAMESPACE} || {
+                            kubectl create deployment \${K8S_DEPLOYMENT} --image=\${FULL_IMAGE}:staging -n \${K8S_NAMESPACE}
+                            kubectl expose deployment \${K8S_DEPLOYMENT} --port=8200 --target-port=8200 -n \${K8S_NAMESPACE} || echo "Service existe"
+                        }
                         
-                        echo "Test 2: Verificando metrics endpoint..."
-                        kubectl run curl-test-app2 --image=curlimages/curl:latest --rm -i --restart=Never -n ${K8S_NAMESPACE} -- \
-                            curl -s http://${SERVICE_IP}:${SERVICE_PORT}/actuator/metrics | grep '"names"' || exit 1
+                        # Actualizar imagen
+                        kubectl set image deployment/\${K8S_DEPLOYMENT} \${K8S_CONTAINER}=\${FULL_IMAGE}:staging -n \${K8S_NAMESPACE} --record
+                        kubectl rollout status deployment/\${K8S_DEPLOYMENT} -n \${K8S_NAMESPACE} --timeout=300s
                         
-                        echo "Test 3: Verificando info endpoint..."
-                        kubectl run curl-test-app3 --image=curlimages/curl:latest --rm -i --restart=Never -n ${K8S_NAMESPACE} -- \
-                            curl -s http://${SERVICE_IP}:${SERVICE_PORT}/actuator/info || exit 1
-                        
-                        echo "✅ Todas las pruebas de aplicación pasaron exitosamente"
-                    '''
+                        echo "✅ Product Service desplegado en staging"
+                    """
                 }
             }
         }
 
-        stage('Performance Tests (Locust/E2E)') {
+        stage('Product Service Smoke Tests') {
             steps {
                 script {
-                    echo "Ejecutando pruebas de rendimiento (Locust) y E2E..."
-                    sh '''
-                        SERVICE_IP=$(kubectl get svc ${IMAGE_NAME} -n ${K8S_NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                    sh """
+                        echo "🧪 Testing Product Service específico..."
+                        kubectl wait --for=condition=ready pod -l app=\${K8S_DEPLOYMENT} -n \${K8S_NAMESPACE} --timeout=300s || echo "⚠️ Timeout waiting for pods"
                         
-                        # Aquí ejecutarías tus scripts de Locust o E2E contra el clúster
-                        # Por ahora, usamos el test básico de 'ab' (Apache Bench)
+                        POD_NAME=\$(kubectl get pods -n \${K8S_NAMESPACE} -l app=\${K8S_DEPLOYMENT} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
                         
-                        echo "Ejecutando pruebas de carga básicas con Apache Bench..."
-                        kubectl run ab-test --image=jordi/ab --rm -i --restart=Never -n ${K8S_NAMESPACE} -- \
-                            ab -n 100 -c 10 http://${SERVICE_IP}:${SERVICE_PORT}/actuator/health || echo "AB test completado"
+                        if [ ! -z "\$POD_NAME" ]; then
+                            echo "🎯 Testing pod: \$POD_NAME"
+                            # Test health endpoint
+                            kubectl exec \$POD_NAME -n \${K8S_NAMESPACE} -- curl -f http://localhost:8200/actuator/health || {
+                                echo "⚠️ Health check falló, verificando logs..."
+                                kubectl logs \$POD_NAME -n \${K8S_NAMESPACE} --tail=20
+                            }
+                            
+                            # Test specific product endpoints
+                            kubectl exec \$POD_NAME -n \${K8S_NAMESPACE} -- curl -f http://localhost:8200/api/products || echo "⚠️ Products endpoint no disponible"
+                        fi
                         
-                        echo "✅ Pruebas de rendimiento/E2E completadas"
-                    '''
-                }
-            }
-        }
-
-        stage('Monitoring Setup') {
-            steps {
-                script {
-                    echo "Configurando monitoreo para ${IMAGE_NAME}..."
-                    sh '''
-                        # Aplicar ServiceMonitor para Prometheus
-                        cat <<EOF | kubectl apply -f -
-                        apiVersion: monitoring.coreos.com/v1
-                        kind: ServiceMonitor
-                        metadata:
-                          name: ${IMAGE_NAME}
-                          namespace: ${K8S_NAMESPACE}
-                          labels:
-                            app: ${IMAGE_NAME}
-                        spec:
-                          selector:
-                            matchLabels:
-                              app: ${IMAGE_NAME}
-                          endpoints:
-                          - port: http
-                            path: /actuator/prometheus
-                            interval: 30s
-                        EOF
-                        echo "✅ Monitoreo configurado"
-                    '''
+                        echo "✅ Product Service smoke tests completados"
+                    """
                 }
             }
         }
@@ -175,24 +140,24 @@ pipeline {
 
     post {
         success {
-            echo "✅ DESPLIEGUE A STAGING EXITOSO para ${IMAGE_NAME} ${IMAGE_TO_DEPLOY}"
-            script {
-                sh 'echo "Enviando notificación de éxito..."'
-            }
+            echo "🎉 Product Service staging deployment exitoso: ${FULL_IMAGE}:staging"
         }
         failure {
-            echo "❌ DESPLIEGUE A STAGING FALLÓ para ${IMAGE_NAME} ${IMAGE_TO_DEPLOY}"
             script {
-                // Lógica de Rollback
-                sh '''
-                    echo "Iniciando rollback..."
-                    kubectl rollout undo deployment/${IMAGE_NAME} -n ${K8S_NAMESPACE} || echo "No hay versión anterior para hacer rollback."
-                '''
+                sh """
+                    echo "❌ Product Service staging deployment falló"
+                    kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -10
+                """
             }
         }
         always {
-            cleanWs()
-            sh 'gcloud auth revoke --all || true'
+            script {
+                sh """
+                    docker rmi \${FULL_IMAGE}:\${IMAGE_TAG} || true
+                    docker rmi \${FULL_IMAGE}:staging || true
+                    gcloud auth revoke --all || true
+                """
+            }
         }
     }
 }

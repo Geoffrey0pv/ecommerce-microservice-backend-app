@@ -1,4 +1,3 @@
-// jenkins-pipelines/user-service-dev-pipeline.groovy
 pipeline {
     agent any
     environment {
@@ -6,7 +5,6 @@ pipeline {
         GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
         SERVICE_DIR = "user-service"
         SPRING_PROFILES_ACTIVE = "dev"
-        // Credencial de GKE (archivo de clave de servicio JSON)
         GCP_CREDENTIALS = credentials('gke-credentials') 
     }
 
@@ -15,7 +13,6 @@ pipeline {
             steps {
                 checkout scm
                 script {
-                    // Guarda el Git Commit SHA para usarlo como tag inmutable
                     env.GIT_COMMIT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                     env.FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
                     env.IMAGE_TAG = "${env.GIT_COMMIT_SHA}"
@@ -42,7 +39,7 @@ pipeline {
             steps {
                 script {
                     docker.image('maven:3.8.4-openjdk-11').inside {
-                        // Ejecuta unitarias Y de integración (las que corren con Maven)
+                        // Ejecuta pruebas unitarias Y de integración (corren con Maven)
                         sh "mvn verify -Dspring.profiles.active=dev -pl ${SERVICE_DIR} -am"
                     }
                 }
