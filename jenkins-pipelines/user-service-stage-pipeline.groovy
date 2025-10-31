@@ -200,56 +200,57 @@ pipeline {
     }
 
    post {
-    always {
-        // Publish all test reports
-        junit allowEmptyResults: true, testResults: "${TEST_REPORTS_DIR}/*.xml"
-        
-        // Archive all test artifacts
-        archiveArtifacts artifacts: "${TEST_REPORTS_DIR}/**/*", allowEmptyArchive: true
-    }
-    
-    success {
-        script {
-            sh """
-                echo "🎉 ✅ STAGING DEPLOY EXITOSO"
-                echo "📦 Imagen desplegada: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
-                echo "📊 Reportes generados en ${TEST_REPORTS_DIR}/"
-                gcloud auth revoke --all || true
-            """
-        }
-    }
-    
-    failure {
-        script {
-            // Usar variables de Groovy, no de Bash
-            def failedStage = env.STAGE_NAME ?: 'Unknown'
+        always {
+            // Publish all test reports
+            junit allowEmptyResults: true, testResults: "${TEST_REPORTS_DIR}/*.xml"
             
-            sh """
-                echo "❌ 💥 STAGING DEPLOY FALLÓ"
-                echo "🔍 Fallo detectado en stage: ${failedStage}"
-                
-                # Solo hacer rollback si el deploy mismo falló, no si fallaron las pruebas
-                if [ "${failedStage}" = "Deploy to Staging (Helm)" ]; then
-                    echo "🔄 Realizando rollback del despliegue fallido..."
-                    helm rollback ${K8S_DEPLOYMENT_NAME} 0 -n ${K8S_NAMESPACE} || echo "⚠️ No hay revisión anterior para rollback."
-                else
-                    echo "⚠️ Fallo en stage '${failedStage}'"
-                    echo "✅ El despliegue NO será revertido (deploy fue exitoso)"
-                fi
-                
-                echo "📋 Información de debug:"
-                kubectl get events -n ${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20
-                kubectl get pods -n ${K8S_NAMESPACE} -l app=${K8S_DEPLOYMENT_NAME}
-                kubectl get svc ${K8S_DEPLOYMENT_NAME} -n ${K8S_NAMESPACE}
-                
-                gcloud auth revoke --all || true
-            """
+            // Archive all test artifacts
+            archiveArtifacts artifacts: "${TEST_REPORTS_DIR}/**/*", allowEmptyArchive: true
         }
-    }
-    
-    cleanup {
-        cleanWs()
-    }
+        
+        success {
+            script {
+                sh """
+                    echo "🎉 ✅ STAGING DEPLOY EXITOSO"
+                    echo "📦 Imagen desplegada: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
+                    echo "📊 Reportes generados en ${TEST_REPORTS_DIR}/"
+                    gcloud auth revoke --all || true
+                """
+            }
+        }
+        
+        failure {
+            script {
+                // Usar variables de Groovy, no de Bash
+                def failedStage = env.STAGE_NAME ?: 'Unknown'
+                
+                sh """
+                    echo "❌ 💥 STAGING DEPLOY FALLÓ"
+                    echo "🔍 Fallo detectado en stage: ${failedStage}"
+                    
+                    # Solo hacer rollback si el deploy mismo falló, no si fallaron las pruebas
+                    if [ "${failedStage}" = "Deploy to Staging (Helm)" ]; then
+                        echo "🔄 Realizando rollback del despliegue fallido..."
+                        helm rollback ${K8S_DEPLOYMENT_NAME} 0 -n ${K8S_NAMESPACE} || echo "⚠️ No hay revisión anterior para rollback."
+                    else
+                        echo "⚠️ Fallo en stage '${failedStage}'"
+                        echo "✅ El despliegue NO será revertido (deploy fue exitoso)"
+                    fi
+                    
+                    echo "📋 Información de debug:"
+                    kubectl get events -n ${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20
+                    kubectl get pods -n ${K8S_NAMESPACE} -l app=${K8S_DEPLOYMENT_NAME}
+                    kubectl get svc ${K8S_DEPLOYMENT_NAME} -n ${K8S_NAMESPACE}
+                    
+                    gcloud auth revoke --all || true
+                """
+            }
+        }
+        
+        cleanup {
+            cleanWs()
+        }
+   }
 }
 
 
