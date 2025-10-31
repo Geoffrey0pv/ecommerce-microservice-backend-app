@@ -52,7 +52,6 @@ pipeline {
         stage('Deploy to Staging K8s') {
             steps {
                 script {
-                    // 4. Despliega la imagen en el clúster
                     echo "Desplegando ${env.IMAGE_TO_DEPLOY} a Kubernetes Staging..."
                     sh '''
                         # Asegura que el namespace exista
@@ -71,8 +70,6 @@ pipeline {
                 }
             }
         }
-
-        // --- INICIO DE PRUEBAS DINÁMICAS (POST-DESPLIEGUE) ---
 
         stage('Smoke Tests on Staging') {
             steps {

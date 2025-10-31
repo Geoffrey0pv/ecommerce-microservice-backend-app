@@ -3,7 +3,7 @@ fullnameOverride: order-service
 replicaCount: 1
 
 image:
-  repository: order-service
+  repository: us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices/order-service
   tag: dev
   pullPolicy: IfNotPresent
 

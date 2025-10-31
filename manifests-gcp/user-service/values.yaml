@@ -3,7 +3,7 @@ fullnameOverride: user-service
 replicaCount: 1
 
 image:
-  repository: user-service
+  repository: us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices/user-service
   tag: dev
   pullPolicy: IfNotPresent
 

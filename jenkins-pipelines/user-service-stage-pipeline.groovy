@@ -74,8 +74,8 @@ pipeline {
                         echo "🚀 Desplegando a \${K8S_NAMESPACE}..."
                         kubectl create namespace \${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         
-                        echo "📋 Aplicando manifiestos desde manifests-gcp/user-service/..."
-                        kubectl apply -f manifests-gcp/user-service/ -n \${K8S_NAMESPACE}
+                        echo "📋 Aplicando manifiestos desde manifests-gcp/user-service/templates/..."
+                        kubectl apply -f manifests-gcp/user-service/templates/ -n \${K8S_NAMESPACE}
                         
                         echo "🔄 Actualizando la imagen del deployment \${K8S_DEPLOYMENT_NAME}..."
                         kubectl set image deployment/\${K8S_DEPLOYMENT_NAME} \
