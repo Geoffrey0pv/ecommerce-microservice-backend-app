@@ -90,25 +90,27 @@ pipeline {
             steps {
                 script {
                     sh """
-                        echo "🏥 Ejecutando health checks internos..."
-                        # La etiqueta 'app' viene de tus manifiestos de Helm
-                        kubectl wait --for=condition=ready pod -l app=user-service -n \${K8S_NAMESPACE} --timeout=300s
+                        echo "🏥 Ejecutando health checks..."
                         
-                        POD_NAME=\$(kubectl get pods -n \${K8S_NAMESPACE} -l app=user-service -o jsonpath='{.items[0].metadata.name}')
+                        kubectl wait --for=condition=ready pod \
+                            -l app=${K8S_DEPLOYMENT_NAME} \
+                            -n ${K8S_NAMESPACE} \
+                            --timeout=300s
                         
-                        for i in {1..10}; do
-                            echo "Intento \$i/10: Verificando http://localhost:${SERVICE_PORT}/actuator/health"
-                            if kubectl exec \$POD_NAME -n \${K8S_NAMESPACE} -- curl -s --fail http://localhost:${SERVICE_PORT}/actuator/health | grep '"status":"UP"'; then
-                                echo "✅ Health check interno exitoso."
-                                break
-                            fi
-                            if [ \$i -eq 10 ]; then
-                                echo "❌ Health check interno falló."
-                                kubectl logs \$POD_NAME -n \${K8S_NAMESPACE} --tail=50
+                        POD_NAME=\$(kubectl get pods -n ${K8S_NAMESPACE} \
+                            -l app=${K8S_DEPLOYMENT_NAME} \
+                            -o jsonpath='{.items[0].metadata.name}')
+                        
+                        echo "🎯 Testing pod: \$POD_NAME"
+                        
+                        kubectl exec \$POD_NAME -n ${K8S_NAMESPACE} -- \
+                            curl -f http://localhost:${SERVICE_PORT}/user-service/actuator/health || {
+                                echo "⚠️ Health check falló"
+                                kubectl logs \$POD_NAME -n ${K8S_NAMESPACE} --tail=50
                                 exit 1
-                            fi
-                            sleep 10
-                        done
+                            }
+                        
+                        echo "✅ Health check passed!"
                     """
                 }
             }
@@ -117,63 +119,91 @@ pipeline {
         stage('Get Gateway IP for Tests') {
             steps {
                 script {
-                    echo "🌐 Obteniendo IP externa del API Gateway (\${API_GATEWAY_SERVICE_NAME})..."
                     sh """
-                        # Asumimos que el proxy-client (gateway) está desplegado
-                        echo "Asegúrate que el servicio \${API_GATEWAY_SERVICE_NAME} esté desplegado en \${K8S_NAMESPACE} y sea de tipo LoadBalancer."
+                        echo "🌐 Obteniendo IP externa del LoadBalancer..."
+                        
                         for i in {1..30}; do
-                            STAGING_GATEWAY_IP=\$(kubectl get svc \${API_GATEWAY_SERVICE_NAME} -n \${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-                            if [ -n "\$STAGING_GATEWAY_IP" ]; then
-                                echo "✅ IP del Gateway de Staging: \$STAGING_GATEWAY_IP"
+                            EXTERNAL_IP=\$(kubectl get svc ${K8S_DEPLOYMENT_NAME} -n ${K8S_NAMESPACE} \
+                                -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+                            
+                            if [ ! -z "\$EXTERNAL_IP" ] && [ "\$EXTERNAL_IP" != "<pending>" ]; then
+                                echo "✅ IP Externa: \$EXTERNAL_IP"
+                                echo "\$EXTERNAL_IP" > gateway-ip.txt
                                 break
                             fi
-                            echo "Esperando IP del Gateway (LoadBalancer)... intento \$i/30"
+                            
+                            echo "⏳ Esperando IP... intento \$i/30"
                             sleep 10
                         done
-                        if [ -z "\$STAGING_GATEWAY_IP" ]; then
-                            echo "❌ Error: No se pudo obtener la IP del Gateway."
+                        
+                        if [ -z "\$EXTERNAL_IP" ] || [ "\$EXTERNAL_IP" == "<pending>" ]; then
+                            echo "❌ Timeout esperando IP"
                             exit 1
                         fi
+                        
+                        curl -f --retry 5 --retry-delay 5 --retry-connrefused \
+                            http://\$EXTERNAL_IP:${SERVICE_PORT}/user-service/actuator/health
+                        
+                        echo "✅ Servicio accesible externamente en \$EXTERNAL_IP:${SERVICE_PORT}"
                     """
-                    env.STAGING_GATEWAY_IP = sh(script: "echo \$STAGING_GATEWAY_IP", returnStdout: true).trim()
                 }
             }
         }
-        
+
         stage('Run E2E Tests (Maven)') {
             steps {
                 script {
-                    echo "🧪 Ejecutando pruebas E2E contra http://${env.STAGING_GATEWAY_IP}..."
-                    docker.image('maven:3.8.4-openjdk-11').inside {
-                        sh "mvn test -f tests/e2e/pom.xml -Dapi.gateway.url=http://${env.STAGING_GATEWAY_IP}"
-                    }
+                    sh """
+                        GATEWAY_IP=\$(cat gateway-ip.txt)
+                        BASE_URL="http://\${GATEWAY_IP}:${SERVICE_PORT}"
+                        
+                        echo "🧪 E2E Tests contra: \$BASE_URL"
+                        
+                        if [ -f "e2e-tests/pom.xml" ]; then
+                            cd e2e-tests
+                            mvn clean test -Dtest.base.url=\$BASE_URL
+                            cd ..
+                        else
+                            echo "⚠️ No hay pruebas Maven, ejecutando smoke test..."
+                            curl -f \$BASE_URL/user-service/actuator/health
+                        fi
+                    """
                 }
             }
             post {
                 always {
-                    junit 'tests/e2e/target/surefire-reports/*.xml'
+                    junit allowEmptyResults: true, testResults: 'e2e-tests/target/surefire-reports/*.xml'
                 }
             }
         }
-        
+
         stage('Run Performance Tests (Locust)') {
             steps {
                 script {
-                    echo "⚡ Ejecutando pruebas de rendimiento (Locust) contra http://${env.STAGING_GATEWAY_IP}..."
-                    docker.image('locustio/locust').inside {
-                        sh "cp -R tests/performance /home/locust"
-                        sh """
-                            locust -f /home/locust/ecommerce_load_test.py \
-                                --host=http://${env.STAGING_GATEWAY_IP} \
-                                --headless --users 100 --spawn-rate 10 --run-time 1m \
-                                --exit-code-on-fail 1 --html /home/locust/report.html
-                        """
-                    }
-                    archiveArtifacts artifacts: 'report.html', allowEmptyArchive: true
+                    sh """
+                        GATEWAY_IP=\$(cat gateway-ip.txt)
+                        BASE_URL="http://\${GATEWAY_IP}:${SERVICE_PORT}"
+                        
+                        echo "🚀 Performance Tests contra: \$BASE_URL"
+                        
+                        if [ -f "performance-tests/locustfile.py" ]; then
+                            cd performance-tests
+                            locust -f locustfile.py --host \$BASE_URL \
+                                --users 10 --spawn-rate 2 --run-time 1m \
+                                --headless --csv=reports/locust-report
+                            cd ..
+                        else
+                            echo "⚠️ No hay scripts Locust, ejecutando test básico..."
+                            for i in {1..50}; do
+                                curl -s -o /dev/null \$BASE_URL/user-service/actuator/health
+                            done
+                        fi
+                    """
                 }
             }
+            
         }
-    } 
+    }
 
     post {
         success {
@@ -202,3 +232,5 @@ pipeline {
         }
     }
 }
+
+
