@@ -9,13 +9,23 @@ image:
 
 service:
   type: ClusterIP
-  port: 8200
+  port: 8700 
 
 readinessProbe:
+  path: /user-service/actuator/health 
+  port: 8700
+  initialDelaySeconds: 60 
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+livenessProbe: 
   path: /user-service/actuator/health
-  port: 8200
-  initialDelaySeconds: 10
-  periodSeconds: 30
+  port: 8700
+  initialDelaySeconds: 90
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
 
 env:
   - name: SPRING_PROFILES_ACTIVE
@@ -32,3 +42,7 @@ env:
     value: "false"
   - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
     value: "false"
+  - name: EUREKA_CLIENT_ENABLED  
+    value: "false"
+  - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE  
+    value: "health,info,metrics"
