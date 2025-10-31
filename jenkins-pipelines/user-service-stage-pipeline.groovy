@@ -76,12 +76,12 @@ pipeline {
                         
                         echo "📋 Aplicando/Actualizando Chart de Helm: \${K8S_DEPLOYMENT_NAME}"
                         
-                        # Corrección: Se usan flags --set separados y solo para 'value'
+                        # Esta es la opción "rápida" que deshabilita Eureka
                         helm upgrade --install \${K8S_DEPLOYMENT_NAME} manifests-gcp/user-service/ \
                             --namespace \${K8S_NAMESPACE} \
                             --set image.tag=\${IMAGE_TAG} \
-                            --set env[4].value="false" \
-                            --set env[5].value="false" \
+                            --set env[4].name=EUREKA_CLIENT_REGISTER_WITH_EUREKA,env[4].value="false" \
+                            --set env[5].name=EUREKA_CLIENT_FETCH_REGISTRY,env[5].value="false" \
                             --wait --timeout=5m
                         
                         echo "✅ Despliegue completado."
@@ -95,13 +95,13 @@ pipeline {
                 script {
                     sh """
                         echo "🏥 Ejecutando health checks internos..."
-                        # La etiqueta 'app' viene de tus manifiestos de Helm
                         kubectl wait --for=condition=ready pod -l app=user-service -n \${K8S_NAMESPACE} --timeout=300s
                         
                         POD_NAME=\$(kubectl get pods -n \${K8S_NAMESPACE} -l app=user-service -o jsonpath='{.items[0].metadata.name}')
                         
                         for i in {1..10}; do
                             echo "Intento \$i/10: Verificando http://localhost:${SERVICE_PORT}/actuator/health"
+                            # Como Eureka está deshabilitado, solo buscamos "UP"
                             if kubectl exec \$POD_NAME -n \${K8S_NAMESPACE} -- curl -s --fail http://localhost:${SERVICE_PORT}/actuator/health | grep '"status":"UP"'; then
                                 echo "✅ Health check interno exitoso."
                                 break
@@ -123,8 +123,9 @@ pipeline {
                 script {
                     echo "🌐 Obteniendo IP externa del API Gateway (\${API_GATEWAY_SERVICE_NAME})..."
                     sh """
+                        # Asumimos que el proxy-client (gateway) está desplegado
+                        # Si no lo está, esta etapa fallará.
                         for i in {1..30}; do
-                            # Asumimos que el gateway también está en el namespace 'staging'
                             STAGING_GATEWAY_IP=\$(kubectl get svc \${API_GATEWAY_SERVICE_NAME} -n \${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
                             if [ -n "\$STAGING_GATEWAY_IP" ]; then
                                 echo "✅ IP del Gateway de Staging: \$STAGING_GATEWAY_IP"
@@ -176,7 +177,7 @@ pipeline {
                 }
             }
         }
-    } 
+    } // Fin de stages
 
     post {
         success {
@@ -193,7 +194,6 @@ pipeline {
                 sh """
                     echo "❌ 💥 STAGING DEPLOY FALLÓ"
                     echo "🔍 Realizando rollback..."
-                    # El rollback de Helm es más robusto
                     helm rollback \${K8S_DEPLOYMENT_NAME} 0 -n \${K8S_NAMESPACE} || echo "No hay revisión anterior para hacer rollback."
                     echo "📋 Información de debug:"
                     kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -10
