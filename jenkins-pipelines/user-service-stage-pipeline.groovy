@@ -6,21 +6,26 @@ pipeline {
         GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
         FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
         
+        // Credenciales
         GCP_CREDENTIALS = credentials('gke-credentials')
         GCP_PROJECT = "ecommerce-backend-1760307199"
         
+        // Clúster (Nombres de variables corregidos)
         CLUSTER_NAME = "ecommerce-devops-cluster" 
-        CLUSTER_LOCATION_FLAG = "--region=us-central1" 
+        CLUSTER_LOCATION_FLAG = "--region=us-central1"
         
+        // Kubernetes
         K8S_NAMESPACE = "staging"
         K8S_DEPLOYMENT_NAME = "user-service" 
-        K8S_CONTAINER_NAME = "user-service" 
+        K8S_CONTAINER_NAME = "user-service"  
         K8S_SERVICE_NAME = "user-service"
-        SERVICE_PORT = "8200"
+        SERVICE_PORT = "8200" 
         
+        // Gateway para Pruebas
         API_GATEWAY_SERVICE_NAME = "proxy-client" 
     }
 
+    // Parámetros para ejecución manual o PR
     parameters {
         string(
             name: 'IMAGE_TAG_MANUAL', 
@@ -43,7 +48,6 @@ pipeline {
                         echo "🔄 PR de develop -> staging detectado."
                         env.IMAGE_TAG = sh(script: "git rev-parse --short origin/${env.CHANGE_BRANCH}", returnStdout: true).trim()
                     } else {
-                        // Si se corre en una rama que no es un PR, usa el SHA de la rama actual
                         echo "🏃 Ejecución de Rama detectada (no PR)."
                         env.IMAGE_TAG = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                     }
@@ -72,10 +76,10 @@ pipeline {
             steps {
                 script {
                     sh """
-                        echo "🔍 Verificando \${FULL_IMAGE_NAME}:\${env.IMAGE_TAG}..."
-                        gcloud artifacts docker images describe \${FULL_IMAGE_NAME}:\${env.IMAGE_TAG} || {
+                        echo "🔍 Verificando ${FULL_IMAGE_NAME}:${IMAGE_TAG}..."
+                        gcloud artifacts docker images describe ${FULL_IMAGE_NAME}:${IMAGE_TAG} || {
                             echo "❌ ERROR: Imagen no encontrada"
-                            gcloud artifacts docker images list \${GCR_REGISTRY}/\${IMAGE_NAME} --include-tags --limit=10 --sort-by=~UPDATE_TIME
+                            gcloud artifacts docker images list ${GCR_REGISTRY}/${IMAGE_NAME} --include-tags --limit=10 --sort-by=~UPDATE_TIME
                             exit 1
                         }
                         echo "✅ Imagen verificada."
@@ -88,15 +92,15 @@ pipeline {
             steps {
                 script {
                     sh """
-                        echo "🚀 Desplegando a \${K8S_NAMESPACE}..."
+                        echo "🚀 Desplegando a ${K8S_NAMESPACE}..."
                         kubectl create namespace \${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         
                         echo "📋 Aplicando manifiestos desde manifests-gcp/user-service/..."
                         kubectl apply -f manifests-gcp/user-service/ -n \${K8S_NAMESPACE}
                         
-                        echo "🔄 Actualizando la imagen del deployment \${K8S_DEPLOYMENT_NAME}..."
+                        echo "🔄 Actualizando la imagen del deployment ${K8S_DEPLOYMENT_NAME}..."
                         kubectl set image deployment/\${K8S_DEPLOYMENT_NAME} \
-                            \${K8S_CONTAINER_NAME}=\${FULL_IMAGE_NAME}:\${env.IMAGE_TAG} \
+                            \${K8S_CONTAINER_NAME}=\${FULL_IMAGE_NAME}:\${IMAGE_TAG} \
                             -n \${K8S_NAMESPACE} --record
                         
                         echo "⏳ Esperando rollout..."
@@ -192,13 +196,13 @@ pipeline {
             }
         }
     } 
-
     post {
         success {
             script {
                 sh """
                     echo "🎉 ✅ STAGING DEPLOY EXITOSO"
                     echo "📦 Imagen desplegada: \${FULL_IMAGE_NAME}:\${env.IMAGE_TAG}"
+                    gcloud auth revoke --all || true
                 """
             }
         }
@@ -210,16 +214,12 @@ pipeline {
                     kubectl rollout undo deployment/\${K8S_DEPLOYMENT_NAME} -n \${K8S_NAMESPACE} || echo "No hay rollback disponible."
                     echo "📋 Información de debug:"
                     kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -10
+                    gcloud auth revoke --all || true
                 """
             }
         }
         always {
-            script {
-                sh """
-                    gcloud auth revoke --all || true
-                """
-                cleanWs()
-            }
+            cleanWs()
         }
     }
 }
