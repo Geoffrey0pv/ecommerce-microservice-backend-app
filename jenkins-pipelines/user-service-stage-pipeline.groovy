@@ -1,3 +1,4 @@
+// jenkins-pipelines/user-service-stage-pipeline.groovy
 pipeline {
     agent any
     
@@ -5,6 +6,8 @@ pipeline {
         IMAGE_NAME = "user-service"
         GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
         FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
+        
+        // El pipeline de Staging SIEMPRE despliega la imagen 'latest-dev'
         IMAGE_TAG = "latest-dev" 
         
         // Credenciales
@@ -13,11 +16,11 @@ pipeline {
         
         // Clúster
         CLUSTER_NAME = "ecommerce-devops-cluster" 
-        CLUSTER_LOCATION_FLAG = "--region=us-central1" 
+        CLUSTER_LOCATION_FLAG = "--region=us-central1"
         
         // Kubernetes
         K8S_NAMESPACE = "staging"
-        K8S_DEPLOYMENT_NAME = "user-service"
+        K8S_DEPLOYMENT_NAME = "user-service" // Este es ahora el "Helm Release Name"
         K8S_CONTAINER_NAME = "user-service"
         K8S_SERVICE_NAME = "user-service"
         SERVICE_PORT = "8200"
@@ -25,7 +28,7 @@ pipeline {
         // Gateway para Pruebas
         API_GATEWAY_SERVICE_NAME = "proxy-client" 
     }
-    
+
     stages {
         
         stage('Checkout SCM') {
@@ -67,23 +70,27 @@ pipeline {
             }
         }
         
-        stage('Deploy to Staging') {
+        // ----- ¡¡AQUÍ ESTÁ LA CORRECCIÓN!! -----
+        stage('Deploy to Staging (Helm)') {
             steps {
                 script {
                     sh """
-                        echo "🚀 Desplegando a \${K8S_NAMESPACE}..."
+                        echo "🚀 Desplegando a \${K8S_NAMESPACE} usando Helm..."
                         kubectl create namespace \${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         
-                        echo "📋 Aplicando manifiestos desde manifests-gcp/user-service/templates/..."
-                        kubectl apply -f manifests-gcp/user-service/templates/ -n \${K8S_NAMESPACE}
+                        echo "📋 Aplicando/Actualizando Chart de Helm: \${K8S_DEPLOYMENT_NAME}"
                         
-                        echo "🔄 Actualizando la imagen del deployment \${K8S_DEPLOYMENT_NAME}..."
-                        kubectl set image deployment/\${K8S_DEPLOYMENT_NAME} \
-                            \${K8S_CONTAINER_NAME}=\${FULL_IMAGE_NAME}:\${IMAGE_TAG} \
-                            -n \${K8S_NAMESPACE} --record
+                        # helm upgrade [release-name] [chart-path]
+                        # --install (crea el release si no existe)
+                        # --namespace (lo instala en 'staging')
+                        # --set (sobrescribe el valor 'image.tag' en values.yaml)
+                        # --wait (espera a que el despliegue termine)
                         
-                        echo "⏳ Esperando rollout..."
-                        kubectl rollout status deployment/\${K8S_DEPLOYMENT_NAME} -n \${K8S_NAMESPACE} --timeout=300s
+                        helm upgrade --install \${K8S_DEPLOYMENT_NAME} manifests-gcp/user-service/ \
+                            --namespace \${K8S_NAMESPACE} \
+                            --set image.tag=\${IMAGE_TAG} \
+                            --wait --timeout=5m
+                        
                         echo "✅ Despliegue completado."
                     """
                 }
@@ -95,9 +102,10 @@ pipeline {
                 script {
                     sh """
                         echo "🏥 Ejecutando health checks internos..."
-                        kubectl wait --for=condition=ready pod -l app=\${K8S_DEPLOYMENT_NAME} -n \${K8S_NAMESPACE} --timeout=300s
+                        # La etiqueta 'app' viene de tus manifiestos de Helm
+                        kubectl wait --for=condition=ready pod -l app=user-service -n \${K8S_NAMESPACE} --timeout=300s
                         
-                        POD_NAME=\$(kubectl get pods -n \${K8S_NAMESPACE} -l app=\${K8S_DEPLOYMENT_NAME} -o jsonpath='{.items[0].metadata.name}')
+                        POD_NAME=\$(kubectl get pods -n \${K8S_NAMESPACE} -l app=user-service -o jsonpath='{.items[0].metadata.name}')
                         
                         for i in {1..10}; do
                             echo "Intento \$i/10: Verificando http://localhost:${SERVICE_PORT}/actuator/health"
@@ -123,6 +131,7 @@ pipeline {
                     echo "🌐 Obteniendo IP externa del API Gateway (\${API_GATEWAY_SERVICE_NAME})..."
                     sh """
                         for i in {1..30}; do
+                            # Asumimos que el gateway también está en el namespace 'staging'
                             STAGING_GATEWAY_IP=\$(kubectl get svc \${API_GATEWAY_SERVICE_NAME} -n \${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
                             if [ -n "\$STAGING_GATEWAY_IP" ]; then
                                 echo "✅ IP del Gateway de Staging: \$STAGING_GATEWAY_IP"
@@ -132,7 +141,7 @@ pipeline {
                             sleep 10
                         done
                         if [ -z "\$STAGING_GATEWAY_IP" ]; then
-                            echo "❌ Error: No se pudo obtener la IP del Gateway."
+                            echo "❌ Error: No se pudo obtener la IP del Gateway. Asegúrate de que '\${API_GATEWAY_SERVICE_NAME}' esté desplegado en '\${K8S_NAMESPACE}' y sea de tipo LoadBalancer."
                             exit 1
                         fi
                     """
@@ -174,7 +183,7 @@ pipeline {
                 }
             }
         }
-    }
+    } 
 
     post {
         success {
@@ -191,7 +200,8 @@ pipeline {
                 sh """
                     echo "❌ 💥 STAGING DEPLOY FALLÓ"
                     echo "🔍 Realizando rollback..."
-                    kubectl rollout undo deployment/\${K8S_DEPLOYMENT_NAME} -n \${K8S_NAMESPACE} || echo "No hay rollback disponible."
+                    # El rollback de Helm es más robusto
+                    helm rollback \${K8S_DEPLOYMENT_NAME} 0 -n \${K8S_NAMESPACE} || echo "No hay revisión anterior para hacer rollback."
                     echo "📋 Información de debug:"
                     kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -10
                     gcloud auth revoke --all || true
