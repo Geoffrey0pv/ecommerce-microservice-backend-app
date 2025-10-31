@@ -8,8 +8,8 @@ image:
   pullPolicy: IfNotPresent
 
 service:
-  type: ClusterIP
-  port: 8700 
+  type: LoadBalancer
+  port: 8700
 
 readinessProbe:
   path: /user-service/actuator/health 

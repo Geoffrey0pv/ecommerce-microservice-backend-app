@@ -199,44 +199,56 @@ pipeline {
         }
     }
 
-    post {
-        success {
-            script {
-                sh """
-                    echo "🎉 ✅ STAGING DEPLOY EXITOSO"
-                    echo "📦 Imagen desplegada: \${FULL_IMAGE_NAME}:\${IMAGE_TAG}"
-                    gcloud auth revoke --all || true
-                """
-            }
+   post {
+    always {
+        // Publish all test reports
+        junit allowEmptyResults: true, testResults: "${TEST_REPORTS_DIR}/*.xml"
+        
+        // Archive all test artifacts
+        archiveArtifacts artifacts: "${TEST_REPORTS_DIR}/**/*", allowEmptyArchive: true
+    }
+    
+    success {
+        script {
+            sh """
+                echo "🎉 ✅ STAGING DEPLOY EXITOSO"
+                echo "📦 Imagen desplegada: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
+                echo "📊 Reportes generados en ${TEST_REPORTS_DIR}/"
+                gcloud auth revoke --all || true
+            """
         }
-        failure {
-            script {
-                sh """
-                    echo "❌ 💥 STAGING DEPLOY FALLÓ"
-                    
-                    # NO hacer rollback si el deploy fue exitoso pero las pruebas fallaron
-                    # Solo hacer rollback si el deploy mismo falló
-                    FAILED_STAGE=\${env.STAGE_NAME}
-                    
-                    if [ "\$FAILED_STAGE" == "Deploy to Staging (Helm)" ]; then
-                        echo "🔍 Realizando rollback del despliegue fallido..."
-                        helm rollback \${K8S_DEPLOYMENT_NAME} 0 -n \${K8S_NAMESPACE} || echo "No hay revisión anterior."
-                    else
-                        echo "⚠️ Fallo en stage '\$FAILED_STAGE' - No se hace rollback del despliegue"
-                        echo "El servicio sigue corriendo en la versión actual"
-                    fi
-                    
-                    echo "📋 Información de debug:"
-                    kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -10
-                    kubectl get pods -n \${K8S_NAMESPACE} -l app=\${K8S_DEPLOYMENT_NAME}
-                    
-                    gcloud auth revoke --all || true
-                """
-            }
+    }
+    
+    failure {
+        script {
+            // Usar variables de Groovy, no de Bash
+            def failedStage = env.STAGE_NAME ?: 'Unknown'
+            
+            sh """
+                echo "❌ 💥 STAGING DEPLOY FALLÓ"
+                echo "🔍 Fallo detectado en stage: ${failedStage}"
+                
+                # Solo hacer rollback si el deploy mismo falló, no si fallaron las pruebas
+                if [ "${failedStage}" = "Deploy to Staging (Helm)" ]; then
+                    echo "🔄 Realizando rollback del despliegue fallido..."
+                    helm rollback ${K8S_DEPLOYMENT_NAME} 0 -n ${K8S_NAMESPACE} || echo "⚠️ No hay revisión anterior para rollback."
+                else
+                    echo "⚠️ Fallo en stage '${failedStage}'"
+                    echo "✅ El despliegue NO será revertido (deploy fue exitoso)"
+                fi
+                
+                echo "📋 Información de debug:"
+                kubectl get events -n ${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20
+                kubectl get pods -n ${K8S_NAMESPACE} -l app=${K8S_DEPLOYMENT_NAME}
+                kubectl get svc ${K8S_DEPLOYMENT_NAME} -n ${K8S_NAMESPACE}
+                
+                gcloud auth revoke --all || true
+            """
         }
-        always {
-            cleanWs()
-        }
+    }
+    
+    cleanup {
+        cleanWs()
     }
 }
 
