@@ -4,7 +4,7 @@ replicaCount: 1
 
 image:
   repository: us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices/service-discovery
-  tag: dev
+  tag: latest-dev
   pullPolicy: IfNotPresent
 
 service:

@@ -71,7 +71,6 @@ pipeline {
             steps {
                 script {
                     sh """
-                        ...
                         helm upgrade --install \${K8S_DEPLOYMENT_NAME} manifests-gcp/user-service/ \
                             --namespace \${K8S_NAMESPACE} \
                             --set image.tag=\${IMAGE_TAG} \
