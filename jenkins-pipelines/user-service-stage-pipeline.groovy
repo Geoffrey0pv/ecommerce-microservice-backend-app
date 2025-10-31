@@ -1,4 +1,3 @@
-// jenkins-pipelines/user-service-stage-pipeline.groovy
 pipeline {
     agent any
     
@@ -6,8 +5,6 @@ pipeline {
         IMAGE_NAME = "user-service"
         GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
         FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
-        
-        // El pipeline de Staging SIEMPRE despliega la imagen 'latest-dev'
         IMAGE_TAG = "latest-dev" 
         
         // Credenciales
@@ -20,7 +17,7 @@ pipeline {
         
         // Kubernetes
         K8S_NAMESPACE = "staging"
-        K8S_DEPLOYMENT_NAME = "user-service" // Este es ahora el "Helm Release Name"
+        K8S_DEPLOYMENT_NAME = "user-service"
         K8S_CONTAINER_NAME = "user-service"
         K8S_SERVICE_NAME = "user-service"
         SERVICE_PORT = "8200"
@@ -70,28 +67,17 @@ pipeline {
             }
         }
         
-        // ----- ¡¡AQUÍ ESTÁ LA CORRECCIÓN!! -----
         stage('Deploy to Staging (Helm)') {
             steps {
                 script {
                     sh """
-                        echo "🚀 Desplegando a \${K8S_NAMESPACE} usando Helm..."
-                        kubectl create namespace \${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                        
-                        echo "📋 Aplicando/Actualizando Chart de Helm: \${K8S_DEPLOYMENT_NAME}"
-                        
-                        # helm upgrade [release-name] [chart-path]
-                        # --install (crea el release si no existe)
-                        # --namespace (lo instala en 'staging')
-                        # --set (sobrescribe el valor 'image.tag' en values.yaml)
-                        # --wait (espera a que el despliegue termine)
-                        
+                        ...
                         helm upgrade --install \${K8S_DEPLOYMENT_NAME} manifests-gcp/user-service/ \
                             --namespace \${K8S_NAMESPACE} \
                             --set image.tag=\${IMAGE_TAG} \
+                            --set env[4].name=EUREKA_CLIENT_REGISTER_WITH_EUREKA,env[4].value="false" \
+                            --set env[5].name=EUREKA_CLIENT_FETCH_REGISTRY,env[5].value="false" \
                             --wait --timeout=5m
-                        
-                        echo "✅ Despliegue completado."
                     """
                 }
             }
