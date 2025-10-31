@@ -13,7 +13,7 @@ pipeline {
         
         // Clúster
         CLUSTER_NAME = "ecommerce-devops-cluster" 
-        CLUSTER_LOCATION_FLAG = "--region=us-central1" // O usa --zone si es zonal
+        CLUSTER_LOCATION_FLAG = "--region=us-central1" 
         
         // Kubernetes
         K8S_NAMESPACE = "staging"
