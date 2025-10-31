@@ -5,11 +5,19 @@ pipeline {
     environment {
         IMAGE_NAME = "user-service"
         GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
-        K8S_NAMESPACE = "ecommerce-staging"
-        GCP_PROJECT = "ingesoft-taller2"
-        GKE_CLUSTER = "ecommerce-staging-cluster"
-        GKE_ZONE = "us-central1-b"
+        FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
+        
         GCP_CREDENTIALS = credentials('gke-credentials')
+        GCP_PROJECT = "ecommerce-backend-1760307199"
+        CLUSTER_NAME = "ecommerce-devops-cluster" 
+        CLUSTER_REGION = "us-central1"
+        K8S_NAMESPACE = "staging"
+        K8S_DEPLOYMENT_NAME = "user-service"
+        K8S_CONTAINER_NAME = "user-service"
+        K8S_SERVICE_NAME = "user-service"
+        SERVICE_PORT = "8200"
+        
+        API_GATEWAY_SERVICE_NAME = "proxy-client" 
     }
 
     stages {
