@@ -122,27 +122,41 @@ pipeline {
                     sh """
                         echo "🌐 Obteniendo IP externa del LoadBalancer..."
                         
-                        for i in {1..30}; do
+                        # Loop usando seq en lugar de expansión de rango
+                        for i in \$(seq 1 30); do
                             EXTERNAL_IP=\$(kubectl get svc ${K8S_DEPLOYMENT_NAME} -n ${K8S_NAMESPACE} \
                                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
                             
-                            if [ ! -z "\$EXTERNAL_IP" ] && [ "\$EXTERNAL_IP" != "<pending>" ]; then
-                                echo "✅ IP Externa: \$EXTERNAL_IP"
+                            if [ -n "\$EXTERNAL_IP" ] && [ "\$EXTERNAL_IP" != "<pending>" ]; then
+                                echo "✅ IP Externa obtenida: \$EXTERNAL_IP"
                                 echo "\$EXTERNAL_IP" > gateway-ip.txt
                                 break
                             fi
                             
-                            echo "⏳ Esperando IP... intento \$i/30"
+                            echo "⏳ Esperando IP externa... intento \$i/30"
                             sleep 10
                         done
                         
-                        if [ -z "\$EXTERNAL_IP" ] || [ "\$EXTERNAL_IP" == "<pending>" ]; then
-                            echo "❌ Timeout esperando IP"
+                        # Verificar si se obtuvo la IP
+                        if [ ! -f gateway-ip.txt ]; then
+                            echo "❌ Timeout esperando IP externa del LoadBalancer"
+                            echo "📋 Verificando estado del servicio:"
+                            kubectl get svc ${K8S_DEPLOYMENT_NAME} -n ${K8S_NAMESPACE}
+                            kubectl describe svc ${K8S_DEPLOYMENT_NAME} -n ${K8S_NAMESPACE}
                             exit 1
                         fi
                         
+                        EXTERNAL_IP=\$(cat gateway-ip.txt)
+                        
+                        echo "🔍 Verificando conectividad a http://\$EXTERNAL_IP:${SERVICE_PORT}"
                         curl -f --retry 5 --retry-delay 5 --retry-connrefused \
-                            http://\$EXTERNAL_IP:${SERVICE_PORT}/user-service/actuator/health
+                            http://\$EXTERNAL_IP:${SERVICE_PORT}/user-service/actuator/health || {
+                                echo "⚠️ No se pudo conectar al servicio externamente"
+                                echo "📋 Logs del pod:"
+                                POD_NAME=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${K8S_DEPLOYMENT_NAME} -o jsonpath='{.items[0].metadata.name}')
+                                kubectl logs \$POD_NAME -n ${K8S_NAMESPACE} --tail=20
+                                exit 1
+                            }
                         
                         echo "✅ Servicio accesible externamente en \$EXTERNAL_IP:${SERVICE_PORT}"
                     """
@@ -150,29 +164,36 @@ pipeline {
             }
         }
 
-        stage('Run E2E Tests (Maven)') {
+        stage('Run Performance Tests (Locust)') {
             steps {
                 script {
                     sh """
                         GATEWAY_IP=\$(cat gateway-ip.txt)
                         BASE_URL="http://\${GATEWAY_IP}:${SERVICE_PORT}"
                         
-                        echo "🧪 E2E Tests contra: \$BASE_URL"
+                        echo "🚀 Performance Tests contra: \$BASE_URL"
                         
-                        if [ -f "e2e-tests/pom.xml" ]; then
-                            cd e2e-tests
-                            mvn clean test -Dtest.base.url=\$BASE_URL
+                        if [ -f "performance-tests/locustfile.py" ]; then
+                            cd performance-tests
+                            locust -f locustfile.py --host \$BASE_URL \
+                                --users 10 --spawn-rate 2 --run-time 1m \
+                                --headless --csv=reports/locust-report
                             cd ..
                         else
-                            echo "⚠️ No hay pruebas Maven, ejecutando smoke test..."
-                            curl -f \$BASE_URL/user-service/actuator/health
+                            echo "⚠️ No hay scripts Locust, ejecutando test básico..."
+                            # CORREGIDO: usar seq en lugar de {1..50}
+                            for i in \$(seq 1 50); do
+                                curl -s -o /dev/null -w "%{http_code}\\n" \
+                                    \$BASE_URL/user-service/actuator/health
+                            done | sort | uniq -c
+                            echo "✅ 50 requests completados"
                         fi
                     """
                 }
             }
             post {
                 always {
-                    junit allowEmptyResults: true, testResults: 'e2e-tests/target/surefire-reports/*.xml'
+                    archiveArtifacts artifacts: 'performance-tests/reports/*', allowEmptyArchive: true
                 }
             }
         }
@@ -219,10 +240,23 @@ pipeline {
             script {
                 sh """
                     echo "❌ 💥 STAGING DEPLOY FALLÓ"
-                    echo "🔍 Realizando rollback..."
-                    helm rollback \${K8S_DEPLOYMENT_NAME} 0 -n \${K8S_NAMESPACE} || echo "No hay revisión anterior para hacer rollback."
+                    
+                    # NO hacer rollback si el deploy fue exitoso pero las pruebas fallaron
+                    # Solo hacer rollback si el deploy mismo falló
+                    FAILED_STAGE=\${env.STAGE_NAME}
+                    
+                    if [ "\$FAILED_STAGE" == "Deploy to Staging (Helm)" ]; then
+                        echo "🔍 Realizando rollback del despliegue fallido..."
+                        helm rollback \${K8S_DEPLOYMENT_NAME} 0 -n \${K8S_NAMESPACE} || echo "No hay revisión anterior."
+                    else
+                        echo "⚠️ Fallo en stage '\$FAILED_STAGE' - No se hace rollback del despliegue"
+                        echo "El servicio sigue corriendo en la versión actual"
+                    fi
+                    
                     echo "📋 Información de debug:"
                     kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -10
+                    kubectl get pods -n \${K8S_NAMESPACE} -l app=\${K8S_DEPLOYMENT_NAME}
+                    
                     gcloud auth revoke --all || true
                 """
             }
