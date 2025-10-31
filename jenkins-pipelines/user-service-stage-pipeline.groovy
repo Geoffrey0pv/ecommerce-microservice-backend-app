@@ -1,3 +1,4 @@
+// jenkins-pipelines/user-service-stage-pipeline.groovy
 pipeline {
     agent any
     
@@ -5,24 +6,21 @@ pipeline {
         IMAGE_NAME = "user-service"
         GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
         FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
+        
         IMAGE_TAG = "latest-dev" 
         
-        // Credenciales
         GCP_CREDENTIALS = credentials('gke-credentials')
         GCP_PROJECT = "ecommerce-backend-1760307199"
         
-        // Clúster
         CLUSTER_NAME = "ecommerce-devops-cluster" 
         CLUSTER_LOCATION_FLAG = "--region=us-central1"
         
-        // Kubernetes
         K8S_NAMESPACE = "staging"
         K8S_DEPLOYMENT_NAME = "user-service"
         K8S_CONTAINER_NAME = "user-service"
         K8S_SERVICE_NAME = "user-service"
         SERVICE_PORT = "8200"
         
-        // Gateway para Pruebas
         API_GATEWAY_SERVICE_NAME = "proxy-client" 
     }
 
@@ -76,12 +74,12 @@ pipeline {
                         
                         echo "📋 Aplicando/Actualizando Chart de Helm: \${K8S_DEPLOYMENT_NAME}"
                         
-                        # Esta es la opción "rápida" que deshabilita Eureka
+                        # Corrección: Se usan flags '--set' SEPARADOS para cada variable.
                         helm upgrade --install \${K8S_DEPLOYMENT_NAME} manifests-gcp/user-service/ \
                             --namespace \${K8S_NAMESPACE} \
                             --set image.tag=\${IMAGE_TAG} \
-                            --set env[4].name=EUREKA_CLIENT_REGISTER_WITH_EUREKA,env[4].value="false" \
-                            --set env[5].name=EUREKA_CLIENT_FETCH_REGISTRY,env[5].value="false" \
+                            --set env[4].value="false" \
+                            --set env[5].value="false" \
                             --wait --timeout=5m
                         
                         echo "✅ Despliegue completado."
@@ -95,13 +93,13 @@ pipeline {
                 script {
                     sh """
                         echo "🏥 Ejecutando health checks internos..."
+                        # La etiqueta 'app' viene de tus manifiestos de Helm
                         kubectl wait --for=condition=ready pod -l app=user-service -n \${K8S_NAMESPACE} --timeout=300s
                         
                         POD_NAME=\$(kubectl get pods -n \${K8S_NAMESPACE} -l app=user-service -o jsonpath='{.items[0].metadata.name}')
                         
                         for i in {1..10}; do
                             echo "Intento \$i/10: Verificando http://localhost:${SERVICE_PORT}/actuator/health"
-                            # Como Eureka está deshabilitado, solo buscamos "UP"
                             if kubectl exec \$POD_NAME -n \${K8S_NAMESPACE} -- curl -s --fail http://localhost:${SERVICE_PORT}/actuator/health | grep '"status":"UP"'; then
                                 echo "✅ Health check interno exitoso."
                                 break
@@ -124,7 +122,7 @@ pipeline {
                     echo "🌐 Obteniendo IP externa del API Gateway (\${API_GATEWAY_SERVICE_NAME})..."
                     sh """
                         # Asumimos que el proxy-client (gateway) está desplegado
-                        # Si no lo está, esta etapa fallará.
+                        echo "Asegúrate que el servicio \${API_GATEWAY_SERVICE_NAME} esté desplegado en \${K8S_NAMESPACE} y sea de tipo LoadBalancer."
                         for i in {1..30}; do
                             STAGING_GATEWAY_IP=\$(kubectl get svc \${API_GATEWAY_SERVICE_NAME} -n \${K8S_NAMESPACE} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
                             if [ -n "\$STAGING_GATEWAY_IP" ]; then
@@ -135,7 +133,7 @@ pipeline {
                             sleep 10
                         done
                         if [ -z "\$STAGING_GATEWAY_IP" ]; then
-                            echo "❌ Error: No se pudo obtener la IP del Gateway. Asegúrate de que '\${API_GATEWAY_SERVICE_NAME}' esté desplegado en '\${K8S_NAMESPACE}' y sea de tipo LoadBalancer."
+                            echo "❌ Error: No se pudo obtener la IP del Gateway."
                             exit 1
                         fi
                     """
@@ -177,7 +175,7 @@ pipeline {
                 }
             }
         }
-    } // Fin de stages
+    } 
 
     post {
         success {
