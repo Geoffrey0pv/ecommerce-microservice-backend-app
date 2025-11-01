@@ -3,7 +3,7 @@ fullnameOverride: product-service
 replicaCount: 1
 
 image:
-  repository: product-service
+  repository: us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices/product-service
   tag: dev
   pullPolicy: IfNotPresent
 
