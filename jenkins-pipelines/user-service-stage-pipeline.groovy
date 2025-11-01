@@ -22,6 +22,7 @@ pipeline {
         SERVICE_PORT = "8700"
         
         API_GATEWAY_SERVICE_NAME = "proxy-client" 
+        TEST_REPORTS_DIR = "test-reports"
     }
 
     stages {
