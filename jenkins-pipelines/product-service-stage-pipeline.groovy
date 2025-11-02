@@ -1,44 +1,35 @@
 pipeline {
     agent any
+    
     environment {
         IMAGE_NAME = "product-service"
-        SERVICE_DIR = "product-service"
         GCR_REGISTRY = "us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices"
-        FULL_IMAGE = "${GCR_REGISTRY}/${IMAGE_NAME}"
-        IMAGE_TAG = "${params.IMAGE_TAG ?: 'latest-dev'}"
+        FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
+        
+        IMAGE_TAG = "latest-dev" 
+        
         GCP_CREDENTIALS = credentials('gke-credentials')
         GCP_PROJECT = "ecommerce-backend-1760307199"
+        
+        CLUSTER_NAME = "ecommerce-devops-cluster" 
+        CLUSTER_LOCATION_FLAG = "--region=us-central1"
+        
         K8S_NAMESPACE = "staging"
-        K8S_DEPLOYMENT = "product-service-deployment"
-        K8S_CONTAINER = "product-service"
-        CLUSTER_NAME = "ecommerce-devops-cluster"
-        CLUSTER_REGION = "us-central1"
-    }
-
-    parameters {
-        string(
-            name: 'IMAGE_TAG', 
-            defaultValue: 'latest-dev', 
-            description: 'Tag de imagen a desplegar (usar SHA del commit o latest-dev)'
-        )
-        choice(
-            name: 'DEPLOY_ACTION',
-            choices: ['deploy', 'rollback'],
-            description: 'Acción a realizar en staging'
-        )
+        K8S_DEPLOYMENT_NAME = "product-service"
+        K8S_CONTAINER_NAME = "product-service"
+        K8S_SERVICE_NAME = "product-service"
+        SERVICE_PORT = "8500" 
+        
+        API_GATEWAY_SERVICE_NAME = "proxy-client" 
     }
 
     stages {
-        stage('Validate Context') {
+        
+        stage('Checkout SCM') {
             steps {
-                script {
-                    if (env.CHANGE_TARGET && env.CHANGE_TARGET != 'staging') {
-                        error("❌ Este pipeline solo debe ejecutarse en PRs hacia 'staging'. Target actual: ${env.CHANGE_TARGET}")
-                    }
-                    echo "✅ Contexto válido: Pipeline STAGE para ${IMAGE_NAME}"
-                    echo "📦 Imagen a desplegar: ${FULL_IMAGE}:${IMAGE_TAG}"
-                    echo "🎯 Namespace destino: ${K8S_NAMESPACE}"
-                }
+                checkout scm
+                echo "📦 Iniciando despliegue a STAGING"
+                echo "📦 Imagen a desplegar: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
             }
         }
 
@@ -50,88 +41,76 @@ pipeline {
                         gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                         gcloud config set project \${GCP_PROJECT}
                         gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
-                        gcloud container clusters get-credentials \${CLUSTER_NAME} --region=\${CLUSTER_REGION}
-                        kubectl cluster-info
+                        echo "☸️ Obteniendo credenciales de GKE..."
+                        gcloud container clusters get-credentials \${CLUSTER_NAME} \${CLUSTER_LOCATION_FLAG} --project \${GCP_PROJECT}
                     """
                 }
             }
         }
 
-        stage('Verify Image Exists') {
+        stage('Verify Image Exists in GCR') {
             steps {
                 script {
                     sh """
-                        echo "🔍 Verificando imagen \${FULL_IMAGE}:\${IMAGE_TAG}..."
-                        gcloud artifacts docker images describe \${FULL_IMAGE}:\${IMAGE_TAG} || {
+                        echo "🔍 Verificando \${FULL_IMAGE_NAME}:\${IMAGE_TAG}..."
+                        gcloud artifacts docker images describe \${FULL_IMAGE_NAME}:\${IMAGE_TAG} || {
                             echo "❌ ERROR: Imagen no encontrada"
-                            gcloud artifacts docker images list \${GCR_REGISTRY}/\${IMAGE_NAME} --include-tags --limit=10
+                            echo "Asegúrate de que el pipeline de DEV ('product-service-pipeline.groovy') haya corrido exitosamente."
                             exit 1
                         }
-                        echo "✅ Imagen verificada"
+                        echo "✅ Imagen verificada."
+                    """
+                }
+            }
+        }
+        
+        stage('Deploy to Staging (Helm)') {
+            steps {
+                script {
+                    sh """
+                        echo "🚀 Desplegando a \${K8S_NAMESPACE} usando Helm..."
+                        kubectl create namespace \${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+                        
+                        echo "📋 Aplicando/Actualizando Chart de Helm: \${K8S_DEPLOYMENT_NAME}"
+                        
+                        helm upgrade --install \${K8S_DEPLOYMENT_NAME} manifests-gcp/product-service/ \
+                            --namespace \${K8S_NAMESPACE} \
+                            --set image.tag=\${IMAGE_TAG} \
+                            --set env[4].value="false" \
+                            --set env[5].value="false" \
+                            --wait --timeout=5m
+                        
+                        echo "✅ Despliegue completado."
                     """
                 }
             }
         }
 
-        stage('Pull & Promote Image') {
+        stage('Health Check & Smoke Tests') {
             steps {
                 script {
                     sh """
-                        docker pull \${FULL_IMAGE}:\${IMAGE_TAG}
-                        docker tag \${FULL_IMAGE}:\${IMAGE_TAG} \${FULL_IMAGE}:staging
-                        docker tag \${FULL_IMAGE}:\${IMAGE_TAG} \${FULL_IMAGE}:staging-\$(date +%Y%m%d-%H%M%S)
-                        docker push \${FULL_IMAGE}:staging
-                        docker push \${FULL_IMAGE}:staging-\$(date +%Y%m%d-%H%M%S)
-                    """
-                }
-            }
-        }
-
-        stage('Deploy to Staging') {
-            steps {
-                script {
-                    sh """
-                        # Crear namespace si no existe
-                        kubectl get namespace \${K8S_NAMESPACE} || kubectl create namespace \${K8S_NAMESPACE}
+                        echo "🏥 Ejecutando health checks..."
                         
-                        # Crear o actualizar deployment
-                        kubectl get deployment \${K8S_DEPLOYMENT} -n \${K8S_NAMESPACE} || {
-                            kubectl create deployment \${K8S_DEPLOYMENT} --image=\${FULL_IMAGE}:staging -n \${K8S_NAMESPACE}
-                            kubectl expose deployment \${K8S_DEPLOYMENT} --port=8200 --target-port=8200 -n \${K8S_NAMESPACE} || echo "Service existe"
-                        }
+                        kubectl wait --for=condition=ready pod \
+                            -l app=\${K8S_DEPLOYMENT_NAME} \
+                            -n \${K8S_NAMESPACE} \
+                            --timeout=300s
                         
-                        # Actualizar imagen
-                        kubectl set image deployment/\${K8S_DEPLOYMENT} \${K8S_CONTAINER}=\${FULL_IMAGE}:staging -n \${K8S_NAMESPACE} --record
-                        kubectl rollout status deployment/\${K8S_DEPLOYMENT} -n \${K8S_NAMESPACE} --timeout=300s
+                        POD_NAME=\$(kubectl get pods -n \${K8S_NAMESPACE} \
+                            -l app=\${K8S_DEPLOYMENT_NAME} \
+                            -o jsonpath='{.items[0].metadata.name}')
                         
-                        echo "✅ Product Service desplegado en staging"
-                    """
-                }
-            }
-        }
-
-        stage('Product Service Smoke Tests') {
-            steps {
-                script {
-                    sh """
-                        echo "🧪 Testing Product Service específico..."
-                        kubectl wait --for=condition=ready pod -l app=\${K8S_DEPLOYMENT} -n \${K8S_NAMESPACE} --timeout=300s || echo "⚠️ Timeout waiting for pods"
+                        echo "🎯 Testing pod: \$POD_NAME en puerto \${SERVICE_PORT}"
                         
-                        POD_NAME=\$(kubectl get pods -n \${K8S_NAMESPACE} -l app=\${K8S_DEPLOYMENT} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-                        
-                        if [ ! -z "\$POD_NAME" ]; then
-                            echo "🎯 Testing pod: \$POD_NAME"
-                            # Test health endpoint
-                            kubectl exec \$POD_NAME -n \${K8S_NAMESPACE} -- curl -f http://localhost:8200/actuator/health || {
-                                echo "⚠️ Health check falló, verificando logs..."
-                                kubectl logs \$POD_NAME -n \${K8S_NAMESPACE} --tail=20
+                        kubectl exec \$POD_NAME -n \${K8S_NAMESPACE} -- \
+                            curl -f http://localhost:\${SERVICE_PORT}/product-service/actuator/health || {
+                                echo "⚠️ Health check falló"
+                                kubectl logs \$POD_NAME -n \${K8S_NAMESPACE} --tail=50
+                                exit 1
                             }
-                            
-                            # Test specific product endpoints
-                            kubectl exec \$POD_NAME -n \${K8S_NAMESPACE} -- curl -f http://localhost:8200/api/products || echo "⚠️ Products endpoint no disponible"
-                        fi
                         
-                        echo "✅ Product Service smoke tests completados"
+                        echo "✅ Health check passed!"
                     """
                 }
             }
@@ -140,23 +119,14 @@ pipeline {
 
     post {
         success {
-            echo "🎉 Product Service staging deployment exitoso: ${FULL_IMAGE}:staging"
+            echo "✅ STAGING deployment exitoso para ${IMAGE_NAME}"
         }
         failure {
-            script {
-                sh """
-                    echo "❌ Product Service staging deployment falló"
-                    kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -10
-                """
-            }
+            echo "❌ STAGING deployment falló para ${IMAGE_NAME}"
         }
         always {
             script {
-                sh """
-                    docker rmi \${FULL_IMAGE}:\${IMAGE_TAG} || true
-                    docker rmi \${FULL_IMAGE}:staging || true
-                    gcloud auth revoke --all || true
-                """
+                sh "gcloud auth revoke --all || true"
             }
         }
     }
