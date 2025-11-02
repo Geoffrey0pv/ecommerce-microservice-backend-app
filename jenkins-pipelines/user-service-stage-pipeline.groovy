@@ -200,21 +200,20 @@ pipeline {
         }
     }
 
-   post {
+    post {
         always {
-            // Publish all test reports
-            junit allowEmptyResults: true, testResults: "${TEST_REPORTS_DIR}/*.xml"
-            
-            // Archive all test artifacts
-            archiveArtifacts artifacts: "${TEST_REPORTS_DIR}/**/*", allowEmptyArchive: true
+            cleanWs()
+            junit allowEmptyResults: true, testResults: 'tests/e2e/target/surefire-reports/*.xml'
         }
         
         success {
             script {
                 sh """
                     echo "🎉 ✅ STAGING DEPLOY EXITOSO"
-                    echo "📦 Imagen desplegada: ${FULL_IMAGE_NAME}:${IMAGE_TAG}"
-                    echo "📊 Reportes generados en ${TEST_REPORTS_DIR}/"
+                    echo "📦 Imagen desplegada: \${FULL_IMAGE_NAME}:\${IMAGE_TAG}"
+                    
+                    echo "🔐 Revocando credenciales de GCP..."
+                    gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                     gcloud auth revoke --all || true
                 """
             }
@@ -222,34 +221,32 @@ pipeline {
         
         failure {
             script {
-                // Usar variables de Groovy, no de Bash
+                sh """
+                    echo "🔐 Re-autenticando para operaciones de rollback y limpieza..."
+                    gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
+                    gcloud config set project \${GCP_PROJECT}
+                    gcloud container clusters get-credentials \${CLUSTER_NAME} \${CLUSTER_LOCATION_FLAG} --project \${GCP_PROJECT}
+                """
+                
                 def failedStage = env.STAGE_NAME ?: 'Unknown'
                 
                 sh """
                     echo "❌ 💥 STAGING DEPLOY FALLÓ"
                     echo "🔍 Fallo detectado en stage: ${failedStage}"
                     
-                    # Solo hacer rollback si el deploy mismo falló, no si fallaron las pruebas
                     if [ "${failedStage}" = "Deploy to Staging (Helm)" ]; then
                         echo "🔄 Realizando rollback del despliegue fallido..."
-                        helm rollback ${K8S_DEPLOYMENT_NAME} 0 -n ${K8S_NAMESPACE} || echo "⚠️ No hay revisión anterior para rollback."
+                        helm rollback \${K8S_DEPLOYMENT_NAME} 0 -n \${K8S_NAMESPACE} || echo "⚠️ No hay revisión anterior para rollback."
                     else
-                        echo "⚠️ Fallo en stage '${failedStage}'"
-                        echo "✅ El despliegue NO será revertido (deploy fue exitoso)"
+                        echo "⚠️ Fallo en stage '${failedStage}'. El despliegue NO será revertido."
                     fi
                     
                     echo "📋 Información de debug:"
-                    kubectl get events -n ${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20
-                    kubectl get pods -n ${K8S_NAMESPACE} -l app=${K8S_DEPLOYMENT_NAME}
-                    kubectl get svc ${K8S_DEPLOYMENT_NAME} -n ${K8S_NAMESPACE}
+                    kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20
                     
                     gcloud auth revoke --all || true
                 """
             }
-        }
-        
-        cleanup {
-            cleanWs()
         }
    }
 }

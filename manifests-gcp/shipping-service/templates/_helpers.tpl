@@ -1,4 +1,3 @@
-# manifests-gcp/shipping-service/templates/_helpers.tpl
 {{/*
 Expand the name of the chart.
 */}}

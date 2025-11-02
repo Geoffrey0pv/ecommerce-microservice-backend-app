@@ -19,13 +19,13 @@ readinessProbe:
 
 env:
   - name: SPRING_PROFILES_ACTIVE
-    value: dev
+    value: "dev"
   - name: SPRING_ZIPKIN_BASE_URL
-    value: http://zipkin:9411/
+    value: "http://zipkin:9411/"
   - name: eureka.client.service-url.defaultZone
-    value: http://discovery:8761/eureka
+    value: "http://discovery:8761/eureka"
   - name: EUREKA_INSTANCE_HOSTNAME
-    value: discovery
+    value: "user-service"
   - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
     value: "false"
   - name: EUREKA_CLIENT_FETCH_REGISTRY

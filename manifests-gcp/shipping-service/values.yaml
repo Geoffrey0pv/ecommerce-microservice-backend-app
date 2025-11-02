@@ -1,45 +1,56 @@
-# Default values for shipping-service
-replicaCount: 2
+# manifests-gcp/shipping-service/values.yaml
+fullnameOverride: shipping-service
+
+replicaCount: 1
 
 image:
-  repository: gcr.io/your-gcp-project-id/shipping-service
-  tag: latest-master
+  repository: us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices/shipping-service
+  tag: latest-dev
   pullPolicy: IfNotPresent
 
 service:
   type: LoadBalancer
-  port: 8084
-  targetPort: 8084
+  port: 8600
+  targetPort: 8600
 
-ingress:
-  enabled: true
-  className: "gce"
-  hosts:
-    - host: shipping-service.your-domain.com
-      paths:
-        - path: /
-          pathType: Prefix
+readinessProbe:
+  path: /shipping-service/actuator/health
+  port: 8600
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
 
-resources:
-  limits:
-    cpu: 1000m
-    memory: 1Gi
-  requests:
-    cpu: 500m
-    memory: 512Mi
-
-nodeSelector: {}
-tolerations: []
-affinity: {}
-
-# Configuración específica del servicio
-config:
-  springProfiles: production
-  serverPort: 8084
-  
-# Health checks
-healthCheck:
-  enabled: true
-  path: /actuator/health
+livenessProbe:
+  path: /shipping-service/actuator/health
+  port: 8600
   initialDelaySeconds: 90
-  periodSeconds: 30
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: "dev"
+  - name: SPRING_ZIPKIN_BASE_URL
+    value: "http://zipkin:9411/"
+  - name: eureka.client.service-url.defaultZone
+    value: "http://discovery:8761/eureka"
+  - name: EUREKA_INSTANCE_HOSTNAME
+    value: "shipping-service"
+  - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
+    value: "false"
+  - name: EUREKA_CLIENT_FETCH_REGISTRY
+    value: "false"
+  - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
+    value: "false"
+  - name: EUREKA_CLIENT_ENABLED
+    value: "false"
+  - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+    value: "health,info,metrics"
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  tls: []
