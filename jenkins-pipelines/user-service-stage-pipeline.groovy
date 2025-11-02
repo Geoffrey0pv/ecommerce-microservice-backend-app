@@ -174,7 +174,7 @@ pipeline {
                         kubectl create configmap e2e-tests-code --from-file=tests/e2e/ -n \${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         
                         # Ejecutar tests en un pod con Maven
-                        cat <<'E2E_POD_EOF' | kubectl apply -f -
+                        cat <<E2E_POD_EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -195,9 +195,9 @@ spec:
       cd /workspace
       
       echo "🔨 Compilando y ejecutando tests E2E..."
-      mvn clean test \
-        -Dapi.gateway.url=\${GATEWAY_IP} \
-        -Dmaven.test.failure.ignore=true \
+      mvn clean test \\
+        -Dapi.gateway.url=\\\${GATEWAY_IP} \\
+        -Dmaven.test.failure.ignore=true \\
         -Dsurefire.reports.directory=/workspace/target/surefire-reports
       
       echo "📊 Tests E2E completados. Generando reportes..."
@@ -292,7 +292,7 @@ E2E_POD_EOF
                         kubectl create configmap locust-tests-code --from-file=tests/performance/ -n \${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
                         
                         # Ejecutar Locust en modo headless
-                        cat <<'LOCUST_POD_EOF' | kubectl apply -f -
+                        cat <<LOCUST_POD_EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
 metadata:
@@ -316,15 +316,15 @@ spec:
       pip install --no-cache-dir faker numpy pandas matplotlib seaborn 2>&1 | tail -20
       
       echo "🚀 Ejecutando Load Test (100 usuarios, 5 minutos)..."
-      locust -f ecommerce_load_test.py \
-        --host=\${TARGET_HOST} \
-        --users 100 \
-        --spawn-rate 10 \
-        --run-time 5m \
-        --headless \
-        --csv=/results/load_test \
-        --html=/results/load_test_report.html \
-        --loglevel INFO \
+      locust -f ecommerce_load_test.py \\
+        --host=\\\${TARGET_HOST} \\
+        --users 100 \\
+        --spawn-rate 10 \\
+        --run-time 5m \\
+        --headless \\
+        --csv=/results/load_test \\
+        --html=/results/load_test_report.html \\
+        --loglevel INFO \\
         --exit-code-on-error 0 || echo "Load test completado con warnings"
       
       echo ""
