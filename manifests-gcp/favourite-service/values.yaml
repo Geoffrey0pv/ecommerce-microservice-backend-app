@@ -9,7 +9,7 @@ image:
   pullPolicy: IfNotPresent
 
 service:
-  type: LoadBalancer
+  type: NodePort
   port: 8800
   targetPort: 8800
 
@@ -50,8 +50,13 @@ env:
     value: "health,info,metrics"
 
 ingress:
-  enabled: false
-  className: ""
-  annotations: {}
-  hosts: []
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+  hosts:
+    - host: ""
+      paths:
+        - path: /favourite-service
+          pathType: Prefix
   tls: []
