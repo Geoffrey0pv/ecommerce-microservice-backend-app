@@ -22,13 +22,14 @@ spec:
         ports:
         - containerPort: {{ .Values.service.port }}
         env:
-        {{- range .Values.env }}
-        {{- if and .name .value }}
-        - name: {{ .name }}
-          value: {{ .value | quote }}
+        {{- range $index, $env := .Values.env }}
+        {{- if $env }}
+        {{- if $env.name }}
+        - name: {{ $env.name }}
+          value: {{ $env.value | quote }}
         {{- end }}
         {{- end }}
-        readinessProbe:
+        {{- end }}
           httpGet:
             path: {{ .Values.readinessProbe.path }}
             port: {{ .Values.readinessProbe.port }}
