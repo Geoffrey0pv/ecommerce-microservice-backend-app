@@ -8,20 +8,21 @@ image:
   pullPolicy: IfNotPresent
 
 service:
-  type: LoadBalancer
+  type: NodePort
   port: 80
   targetPort: 8900
+  nodePort: 30900
 
 readinessProbe:
-  path: /actuator/health 
+  path: /app/actuator/health
   port: 8900
-  initialDelaySeconds: 60 
+  initialDelaySeconds: 60
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 6
 
-livenessProbe: 
-  path: /actuator/health
+livenessProbe:
+  path: /app/actuator/health
   port: 8900
   initialDelaySeconds: 90
   periodSeconds: 15
@@ -43,9 +44,9 @@ env:
     value: "false"
   - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
     value: "false"
-  - name: EUREKA_CLIENT_ENABLED  
+  - name: EUREKA_CLIENT_ENABLED
     value: "false"
-  - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE  
+  - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
     value: "health,info,metrics"
 
 ingress:

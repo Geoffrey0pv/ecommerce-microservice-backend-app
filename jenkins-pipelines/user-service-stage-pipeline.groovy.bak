@@ -18,7 +18,7 @@ pipeline {
         K8S_DEPLOYMENT_NAME = "user-service"
         K8S_CONTAINER_NAME = "user-service"
         K8S_SERVICE_NAME = "user-service"
-        SERVICE_PORT = "8700" 
+        SERVICE_PORT = "8200" 
         
         API_GATEWAY_SERVICE_NAME = "proxy-client" 
     }
@@ -116,7 +116,7 @@ pipeline {
             }
         }
 
-        stage('Verify Gateway Availability') {
+        stage('Get Gateway IP for Tests') {
             steps {
                 script {
                     sh """
@@ -155,11 +155,16 @@ pipeline {
                 }
             }
         }
-
-        stage('Run E2E Tests') {
-            when {
-                expression { fileExists('tests/e2e/pom.xml') }
+                                exit 1
+                            }
+                        
+                        echo "✅ Gateway accesible externamente en \$EXTERNAL_IP"
+                    """
+                }
             }
+        }
+
+        stage('Run E2E Tests (Maven)') {
             steps {
                 script {
                     sh """
@@ -167,16 +172,25 @@ pipeline {
                         BASE_URL="http://\${GATEWAY_IP}"
                         
                         echo "🧪 E2E Tests contra: \$BASE_URL"
-                        echo "⚠️ E2E Tests no implementados aún - saltando"
+                        
+                        if [ -f "tests/e2e/pom.xml" ]; then
+                            docker run --rm --network host -v \$(pwd):/app -w /app maven:3.8.4-openjdk-11 \
+                                mvn test -f tests/e2e/pom.xml -Dapi.gateway.url=\$BASE_URL
+                        else
+                            echo "⚠️ No se encontró 'tests/e2e/pom.xml'"
+                            exit 1
+                        fi
                     """
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'tests/e2e/target/surefire-reports/*.xml'
                 }
             }
         }
 
-        stage('Run Performance Tests') {
-            when {
-                expression { fileExists('tests/performance/ecommerce_load_test.py') }
-            }
+        stage('Run Performance Tests (Locust)') {
             steps {
                 script {
                     sh """
@@ -184,8 +198,25 @@ pipeline {
                         BASE_URL="http://\${GATEWAY_IP}"
                         
                         echo "🚀 Performance Tests contra: \$BASE_URL"
-                        echo "⚠️ Performance Tests no implementados aún - saltando"
+                        
+                        if [ -f "tests/performance/ecommerce_load_test.py" ]; then
+                            # Montamos el workspace actual en el contenedor de Locust
+                            docker run --rm --network host -v \$(pwd):/mnt/locust \
+                                locustio/locust \
+                                -f /mnt/locust/tests/performance/ecommerce_load_test.py \
+                                --host \$BASE_URL \
+                                --users 10 --spawn-rate 2 --run-time 1m \
+                                --headless --csv=reports/locust --exit-code-on-fail 1
+                        else
+                            echo "⚠️ No se encontró 'tests/performance/ecommerce_load_test.py'"
+                            exit 1
+                        fi
                     """
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports_stats.csv', allowEmptyArchive: true
                 }
             }
         }
@@ -197,6 +228,7 @@ pipeline {
                 sh """
                     echo "🎉 ✅ STAGING DEPLOY EXITOSO"
                     echo "📦 Imagen desplegada: \${FULL_IMAGE_NAME}:\${IMAGE_TAG}"
+                    gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                     gcloud auth revoke --all || true
                 """
             }
@@ -230,9 +262,6 @@ pipeline {
             }
         }
         always {
-            script {
-                sh "gcloud auth revoke --all || true"
-            }
             cleanWs()
         }
     }
