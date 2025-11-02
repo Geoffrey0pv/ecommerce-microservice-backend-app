@@ -1,4 +1,3 @@
-// jenkins-pipelines/user-service-stage-pipeline.groovy
 pipeline {
     agent any
     
@@ -19,10 +18,9 @@ pipeline {
         K8S_DEPLOYMENT_NAME = "user-service"
         K8S_CONTAINER_NAME = "user-service"
         K8S_SERVICE_NAME = "user-service"
-        SERVICE_PORT = "8700"
+        SERVICE_PORT = "8200" 
         
         API_GATEWAY_SERVICE_NAME = "proxy-client" 
-        TEST_REPORTS_DIR = "test-reports"
     }
 
     stages {
@@ -75,10 +73,11 @@ pipeline {
                         
                         echo "📋 Aplicando/Actualizando Chart de Helm: \${K8S_DEPLOYMENT_NAME}"
                         
-                        # Corrección: Se usan flags '--set' SEPARADOS para cada variable.
-                        helm upgrade --install ${K8S_DEPLOYMENT_NAME} manifests-gcp/user-service/ \
-                            --namespace ${K8S_NAMESPACE} \
-                            --set image.tag=${IMAGE_TAG} \
+                        helm upgrade --install \${K8S_DEPLOYMENT_NAME} manifests-gcp/user-service/ \
+                            --namespace \${K8S_NAMESPACE} \
+                            --set image.tag=\${IMAGE_TAG} \
+                            --set env[4].value="false" \
+                            --set env[5].value="false" \
                             --wait --timeout=5m
                         
                         echo "✅ Despliegue completado."
@@ -94,20 +93,20 @@ pipeline {
                         echo "🏥 Ejecutando health checks..."
                         
                         kubectl wait --for=condition=ready pod \
-                            -l app=${K8S_DEPLOYMENT_NAME} \
-                            -n ${K8S_NAMESPACE} \
+                            -l app=\${K8S_DEPLOYMENT_NAME} \
+                            -n \${K8S_NAMESPACE} \
                             --timeout=300s
                         
-                        POD_NAME=\$(kubectl get pods -n ${K8S_NAMESPACE} \
-                            -l app=${K8S_DEPLOYMENT_NAME} \
+                        POD_NAME=\$(kubectl get pods -n \${K8S_NAMESPACE} \
+                            -l app=\${K8S_DEPLOYMENT_NAME} \
                             -o jsonpath='{.items[0].metadata.name}')
                         
-                        echo "🎯 Testing pod: \$POD_NAME"
+                        echo "🎯 Testing pod: \$POD_NAME en puerto \${SERVICE_PORT}"
                         
-                        kubectl exec \$POD_NAME -n ${K8S_NAMESPACE} -- \
-                            curl -f http://localhost:${SERVICE_PORT}/user-service/actuator/health || {
+                        kubectl exec \$POD_NAME -n \${K8S_NAMESPACE} -- \
+                            curl -f http://localhost:\${SERVICE_PORT}/user-service/actuator/health || {
                                 echo "⚠️ Health check falló"
-                                kubectl logs \$POD_NAME -n ${K8S_NAMESPACE} --tail=50
+                                kubectl logs \$POD_NAME -n \${K8S_NAMESPACE} --tail=50
                                 exit 1
                             }
                         
@@ -121,11 +120,10 @@ pipeline {
             steps {
                 script {
                     sh """
-                        echo "🌐 Obteniendo IP externa del LoadBalancer..."
+                        echo "🌐 Obteniendo IP externa del API Gateway (\${API_GATEWAY_SERVICE_NAME})..."
                         
-                        # Loop usando seq en lugar de expansión de rango
                         for i in \$(seq 1 30); do
-                            EXTERNAL_IP=\$(kubectl get svc ${K8S_DEPLOYMENT_NAME} -n ${K8S_NAMESPACE} \
+                            EXTERNAL_IP=\$(kubectl get svc \${API_GATEWAY_SERVICE_NAME} -n \${K8S_NAMESPACE} \
                                 -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
                             
                             if [ -n "\$EXTERNAL_IP" ] && [ "\$EXTERNAL_IP" != "<pending>" ]; then
@@ -138,29 +136,49 @@ pipeline {
                             sleep 10
                         done
                         
-                        # Verificar si se obtuvo la IP
                         if [ ! -f gateway-ip.txt ]; then
-                            echo "❌ Timeout esperando IP externa del LoadBalancer"
-                            echo "📋 Verificando estado del servicio:"
-                            kubectl get svc ${K8S_DEPLOYMENT_NAME} -n ${K8S_NAMESPACE}
-                            kubectl describe svc ${K8S_DEPLOYMENT_NAME} -n ${K8S_NAMESPACE}
+                            echo "❌ Timeout esperando IP. Asegúrate que '\${API_GATEWAY_SERVICE_NAME}' esté desplegado en '\${K8S_NAMESPACE}' y sea tipo LoadBalancer."
                             exit 1
                         fi
                         
                         EXTERNAL_IP=\$(cat gateway-ip.txt)
                         
-                        echo "🔍 Verificando conectividad a http://\$EXTERNAL_IP:${SERVICE_PORT}"
+                        echo "🔍 Verificando conectividad a http://\$EXTERNAL_IP"
+                        # Asumimos que el Gateway responde en puerto 80
                         curl -f --retry 5 --retry-delay 5 --retry-connrefused \
-                            http://\$EXTERNAL_IP:${SERVICE_PORT}/user-service/actuator/health || {
-                                echo "⚠️ No se pudo conectar al servicio externamente"
-                                echo "📋 Logs del pod:"
-                                POD_NAME=\$(kubectl get pods -n ${K8S_NAMESPACE} -l app=${K8S_DEPLOYMENT_NAME} -o jsonpath='{.items[0].metadata.name}')
-                                kubectl logs \$POD_NAME -n ${K8S_NAMESPACE} --tail=20
+                            http://\$EXTERNAL_IP/actuator/health || {
+                                echo "⚠️ No se pudo conectar al Gateway externamente"
                                 exit 1
                             }
                         
-                        echo "✅ Servicio accesible externamente en \$EXTERNAL_IP:${SERVICE_PORT}"
+                        echo "✅ Gateway accesible externamente en \$EXTERNAL_IP"
                     """
+                }
+            }
+        }
+
+        stage('Run E2E Tests (Maven)') {
+            steps {
+                script {
+                    sh """
+                        GATEWAY_IP=\$(cat gateway-ip.txt)
+                        BASE_URL="http://\${GATEWAY_IP}"
+                        
+                        echo "🧪 E2E Tests contra: \$BASE_URL"
+                        
+                        if [ -f "tests/e2e/pom.xml" ]; then
+                            docker run --rm --network host -v \$(pwd):/app -w /app maven:3.8.4-openjdk-11 \
+                                mvn test -f tests/e2e/pom.xml -Dapi.gateway.url=\$BASE_URL
+                        else
+                            echo "⚠️ No se encontró 'tests/e2e/pom.xml'"
+                            exit 1
+                        fi
+                    """
+                }
+            }
+            post {
+                always {
+                    junit allowEmptyResults: true, testResults: 'tests/e2e/target/surefire-reports/*.xml'
                 }
             }
         }
@@ -170,59 +188,48 @@ pipeline {
                 script {
                     sh """
                         GATEWAY_IP=\$(cat gateway-ip.txt)
-                        BASE_URL="http://\${GATEWAY_IP}:${SERVICE_PORT}"
+                        BASE_URL="http://\${GATEWAY_IP}"
                         
                         echo "🚀 Performance Tests contra: \$BASE_URL"
                         
-                        if [ -f "performance-tests/locustfile.py" ]; then
-                            cd performance-tests
-                            locust -f locustfile.py --host \$BASE_URL \
+                        if [ -f "tests/performance/ecommerce_load_test.py" ]; then
+                            # Montamos el workspace actual en el contenedor de Locust
+                            docker run --rm --network host -v \$(pwd):/mnt/locust \
+                                locustio/locust \
+                                -f /mnt/locust/tests/performance/ecommerce_load_test.py \
+                                --host \$BASE_URL \
                                 --users 10 --spawn-rate 2 --run-time 1m \
-                                --headless --csv=reports/locust-report
-                            cd ..
+                                --headless --csv=reports/locust --exit-code-on-fail 1
                         else
-                            echo "⚠️ No hay scripts Locust, ejecutando test básico..."
-                            # CORREGIDO: usar seq en lugar de {1..50}
-                            for i in \$(seq 1 50); do
-                                curl -s -o /dev/null -w "%{http_code}\\n" \
-                                    \$BASE_URL/user-service/actuator/health
-                            done | sort | uniq -c
-                            echo "✅ 50 requests completados"
+                            echo "⚠️ No se encontró 'tests/performance/ecommerce_load_test.py'"
+                            exit 1
                         fi
                     """
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'performance-tests/reports/*', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'reports_stats.csv', allowEmptyArchive: true
                 }
             }
         }
     }
 
     post {
-        always {
-            cleanWs()
-            junit allowEmptyResults: true, testResults: 'tests/e2e/target/surefire-reports/*.xml'
-        }
-        
         success {
             script {
                 sh """
                     echo "🎉 ✅ STAGING DEPLOY EXITOSO"
                     echo "📦 Imagen desplegada: \${FULL_IMAGE_NAME}:\${IMAGE_TAG}"
-                    
-                    echo "🔐 Revocando credenciales de GCP..."
                     gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                     gcloud auth revoke --all || true
                 """
             }
         }
-        
         failure {
             script {
                 sh """
-                    echo "🔐 Re-autenticando para operaciones de rollback y limpieza..."
+                    echo "🔐 Re-autenticando para operaciones de rollback..."
                     gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                     gcloud config set project \${GCP_PROJECT}
                     gcloud container clusters get-credentials \${CLUSTER_NAME} \${CLUSTER_LOCATION_FLAG} --project \${GCP_PROJECT}
@@ -243,12 +250,12 @@ pipeline {
                     
                     echo "📋 Información de debug:"
                     kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20
-                    
                     gcloud auth revoke --all || true
                 """
             }
         }
-   }
+        always {
+            cleanWs()
+        }
+    }
 }
-
-
