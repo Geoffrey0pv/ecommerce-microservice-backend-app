@@ -1,5 +1,8 @@
 pipeline {
-    agent any
+    ag        K8S_DEPLOYMENT_NAME = "user-service"
+        K8S_CONTAINER_NAME = "user-service"
+        K8S_SERVICE_NAME = "user-service"
+        SERVICE_PORT = "8700"any
     
     environment {
         IMAGE_NAME = "user-service"
@@ -175,7 +178,7 @@ pipeline {
                         # Ejecuta maven dentro de un contenedor docker
                         # --network host: Permite al contenedor ver la red local (y por ende, GKE)
                         # -v \${WORKSPACE}:/app: Monta tu código en /app
-                        docker run --rm --network host -v "\${WORKSPACE}":/app -w /app maven:3.9.6-eclipse-temurin-17 \
+                        docker run --rm --network host -v "\${WORKSPACE}":/app -w /app maven:3.9.9-eclipse-temurin-17 \
                             mvn test -f tests/e2e/pom.xml -Dapi.gateway.url=\$BASE_URL
                         
                         echo "✅ E2E Tests completados."
