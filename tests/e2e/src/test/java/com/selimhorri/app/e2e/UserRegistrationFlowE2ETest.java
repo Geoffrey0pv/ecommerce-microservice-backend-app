@@ -2,6 +2,7 @@ package com.selimhorri.app.e2e;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.selimhorri.app.e2e.helper.JwtAuthHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ public class UserRegistrationFlowE2ETest {
     private RestTemplate restTemplate;
     private ObjectMapper objectMapper;
     private String apiGatewayUrl;
+    private JwtAuthHelper authHelper;
     private String uniqueId;
     private Map<String, Object> testUser;
     
@@ -38,6 +40,8 @@ public class UserRegistrationFlowE2ETest {
         
         objectMapper = new ObjectMapper();
         apiGatewayUrl = System.getProperty("api.gateway.url", "http://localhost:8100");
+        authHelper = new JwtAuthHelper(apiGatewayUrl);
+        authHelper.authenticateAndGetToken();
         uniqueId = UUID.randomUUID().toString().substring(0, 8);
         
         // Setup test user data
@@ -60,8 +64,8 @@ public class UserRegistrationFlowE2ETest {
         // STEP 1: Register new user
         System.out.println("📝 Step 1: User Registration");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = authHelper.createAuthHeaders();
+        
         HttpEntity<Map<String, Object>> registrationRequest = new HttpEntity<>(testUser, headers);
         
         ResponseEntity<String> registrationResponse = restTemplate.postForEntity(
@@ -176,8 +180,8 @@ public class UserRegistrationFlowE2ETest {
     void testDuplicateUserRegistrationPrevention() {
         System.out.println("🛡️ Testing Duplicate Registration Prevention");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = authHelper.createAuthHeaders();
+        
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(testUser, headers);
         
         // First registration should succeed
@@ -223,8 +227,8 @@ public class UserRegistrationFlowE2ETest {
     void testUserDataValidation() {
         System.out.println("✅ Testing User Data Validation");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = authHelper.createAuthHeaders();
+        
         
         // Test with invalid email
         Map<String, Object> invalidUser = new HashMap<>(testUser);

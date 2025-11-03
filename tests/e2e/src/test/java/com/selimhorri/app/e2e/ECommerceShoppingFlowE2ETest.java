@@ -2,6 +2,7 @@ package com.selimhorri.app.e2e;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.selimhorri.app.e2e.helper.JwtAuthHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,6 +28,7 @@ public class ECommerceShoppingFlowE2ETest {
     private RestTemplate restTemplate;
     private ObjectMapper objectMapper;
     private String apiGatewayUrl;
+    private JwtAuthHelper authHelper;
     private String uniqueId;
     
     private Map<String, Object> testUser;
@@ -45,6 +47,8 @@ public class ECommerceShoppingFlowE2ETest {
         
         objectMapper = new ObjectMapper();
         apiGatewayUrl = System.getProperty("api.gateway.url", "http://localhost:8100");
+        authHelper = new JwtAuthHelper(apiGatewayUrl);
+        authHelper.authenticateAndGetToken();
         uniqueId = UUID.randomUUID().toString().substring(0, 8);
         
         // Setup test user
@@ -74,8 +78,8 @@ public class ECommerceShoppingFlowE2ETest {
     void testCompleteShoppingJourney() {
         System.out.println("🛒 Starting Complete Shopping Journey Test");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = authHelper.createAuthHeaders();
+        
         
         // STEP 1: User Registration
         System.out.println("📝 Step 1: User Registration");
@@ -256,8 +260,8 @@ public class ECommerceShoppingFlowE2ETest {
     void testProductInventoryManagement() {
         System.out.println("📊 Testing Product Inventory Management");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = authHelper.createAuthHeaders();
+        
         
         // Create product with limited inventory
         Map<String, Object> limitedProduct = new HashMap<>();
@@ -339,8 +343,8 @@ public class ECommerceShoppingFlowE2ETest {
     void testOrderUpdateWorkflow() {
         System.out.println("📝 Testing Order Update Workflow");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = authHelper.createAuthHeaders();
+        
         
         // Create minimal setup for order
         HttpEntity<Map<String, Object>> userRequest = new HttpEntity<>(testUser, headers);
