@@ -12,6 +12,8 @@ import org.springframework.security.config.annotation.web.configuration.WebSecur
  * 
  * This configuration is ONLY active when spring.profiles.active=staging
  * Production environments will use the default SecurityConfig with JWT.
+ * 
+ * IMPORTANT: This must be in the Docker image for staging deployment!
  */
 @Configuration
 @EnableWebSecurity
