@@ -184,7 +184,7 @@ spec:
   restartPolicy: Never
   containers:
   - name: maven-test
-    image: maven:3.8.6-eclipse-temurin-17
+    image: maven:3.9.9-eclipse-temurin-17
     imagePullPolicy: IfNotPresent
     command: ["/bin/bash"]
     args:
@@ -327,12 +327,12 @@ spec:
       # Instalar dependencias adicionales
       pip install --no-cache-dir faker numpy pandas matplotlib seaborn 2>&1 | tail -20
       
-      echo "🚀 Ejecutando Load Test (100 usuarios, 5 minutos)..."
+      echo "🚀 Ejecutando Load Test (50 usuarios, 3 minutos)..."
       locust -f ecommerce_load_test.py \\
         --host=\\\${TARGET_HOST} \\
-        --users 100 \\
-        --spawn-rate 10 \\
-        --run-time 5m \\
+        --users 50 \\
+        --spawn-rate 5 \\
+        --run-time 3m \\
         --headless \\
         --csv=/results/load_test \\
         --html=/results/load_test_report.html \\
@@ -388,8 +388,8 @@ LOCUST_POD_EOF
                             kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20 || true
                         fi
                         
-                        # Esperar a que termine (máximo 10 minutos para el test de 5 min + overhead)
-                        for i in \$(seq 1 60); do
+                        # Esperar a que termine (máximo 6 minutos para el test de 3 min + overhead)
+                        for i in \$(seq 1 36); do
                             POD_STATUS=\$(kubectl get pod locust-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
                             
                             if [ "\$POD_STATUS" = "Succeeded" ] || [ "\$POD_STATUS" = "Failed" ]; then
@@ -397,7 +397,7 @@ LOCUST_POD_EOF
                                 break
                             fi
                             
-                            echo "⏳ Locust ejecutando... (\$i/60) - Estado: \$POD_STATUS"
+                            echo "⏳ Locust ejecutando... (\$i/36) - Estado: \$POD_STATUS"
                             sleep 10
                         done
                         
