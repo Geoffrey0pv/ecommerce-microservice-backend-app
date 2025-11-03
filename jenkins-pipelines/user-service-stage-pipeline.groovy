@@ -140,7 +140,6 @@ pipeline {
                         echo "✅ Gateway ClusterIP: \$GATEWAY_IP"
                         echo "\$GATEWAY_IP" > gateway-ip.txt
                         
-                        # El servicio proxy-client expone el puerto 80 (targetPort: 8900)
                         echo "🔍 Verificando conectividad al Gateway en http://\$GATEWAY_IP:80/app/actuator/health"
                         kubectl run test-gateway-\${BUILD_NUMBER} --image=curlimages/curl:latest \
                             -n \${K8S_NAMESPACE} --rm -i --restart=Never --timeout=60s -- \
@@ -163,26 +162,62 @@ pipeline {
             steps {
                 script {
                     sh """
-                        GATEWAY_IP=\$(cat gateway-ip.txt)
-                        # El servicio proxy-client expone el puerto 80 (targetPort: 8900 interno)
-                        BASE_URL="http://\${GATEWAY_IP}"
+                        set +e  # No fallar si el port-forward ya existe
+                        
+                        echo "🌐 =============================================="
+                        echo "🌐 Configurando Port-Forward al Gateway"
+                        echo "🌐 =============================================="
+                        
+                        # Matar cualquier port-forward existente en el puerto 8100
+                        pkill -f "kubectl port-forward.*proxy-client.*8100" || true
+                        
+                        # Iniciar port-forward en segundo plano
+                        kubectl port-forward svc/\${API_GATEWAY_SERVICE_NAME} 8100:80 -n \${K8S_NAMESPACE} > /dev/null 2>&1 &
+                        PORT_FORWARD_PID=\$!
+                        echo "Port-forward PID: \$PORT_FORWARD_PID"
+                        
+                        # Esperar a que el port-forward esté listo
+                        echo "Esperando a que el port-forward esté activo..."
+                        for i in {1..30}; do
+                            if curl -s http://localhost:8100/app/actuator/health > /dev/null 2>&1; then
+                                echo "✅ Port-forward activo!"
+                                break
+                            fi
+                            if [ \$i -eq 30 ]; then
+                                echo "❌ Port-forward no se pudo establecer"
+                                kill \$PORT_FORWARD_PID 2>/dev/null || true
+                                exit 1
+                            fi
+                            sleep 1
+                        done
+                        
+                        set -e  # Volver a modo estricto
+                        
+                        BASE_URL="http://localhost:8100"
                         
                         echo "🧪 =============================================="
                         echo "🧪 Ejecutando E2E Tests contra: \$BASE_URL"
                         echo "🧪 =============================================="
                         
                         # Ejecuta maven dentro de un contenedor docker
-                        # --network host: Permite al contenedor ver la red local (y por ende, GKE)
+                        # --network host: Permite al contenedor acceder a localhost del host
                         # -v \${WORKSPACE}:/app: Monta tu código en /app
                         docker run --rm --network host -v "\${WORKSPACE}":/app -w /app maven:3.9.9-eclipse-temurin-17 \
                             mvn test -f tests/e2e/pom.xml -Dapi.gateway.url=\$BASE_URL
                         
                         echo "✅ E2E Tests completados."
+                        
+                        # Limpiar port-forward
+                        echo "🧹 Limpiando port-forward..."
+                        kill \$PORT_FORWARD_PID 2>/dev/null || true
                     """
                 }
             }
             post {
                 always {
+                    script {
+                        sh "pkill -f 'kubectl port-forward.*proxy-client.*8100' || true"
+                    }
                     junit allowEmptyResults: true, testResults: 'tests/e2e/target/surefire-reports/*.xml'
                     archiveArtifacts artifacts: 'tests/e2e/target/surefire-reports/**/*', allowEmptyArchive: true
                 }
@@ -196,17 +231,49 @@ pipeline {
             steps {
                 script {
                     sh """
-                        GATEWAY_IP=\$(cat gateway-ip.txt)
-                        # El servicio proxy-client expone el puerto 80
-                        BASE_URL="http://\${GATEWAY_IP}"
+                        set +e  # No fallar si el port-forward ya existe
+                        
+                        echo "🌐 =============================================="
+                        echo "🌐 Configurando Port-Forward al Gateway para Locust"
+                        echo "🌐 =============================================="
+                        
+                        # Matar cualquier port-forward existente en el puerto 8100
+                        pkill -f "kubectl port-forward.*proxy-client.*8100" || true
+                        
+                        # Iniciar port-forward en segundo plano
+                        kubectl port-forward svc/\${API_GATEWAY_SERVICE_NAME} 8100:80 -n \${K8S_NAMESPACE} > /dev/null 2>&1 &
+                        PORT_FORWARD_PID=\$!
+                        echo "Port-forward PID: \$PORT_FORWARD_PID"
+                        
+                        # Esperar a que el port-forward esté listo
+                        echo "Esperando a que el port-forward esté activo..."
+                        for i in {1..30}; do
+                            if curl -s http://localhost:8100/app/actuator/health > /dev/null 2>&1; then
+                                echo "✅ Port-forward activo!"
+                                break
+                            fi
+                            if [ \$i -eq 30 ]; then
+                                echo "❌ Port-forward no se pudo establecer"
+                                kill \$PORT_FORWARD_PID 2>/dev/null || true
+                                exit 1
+                            fi
+                            sleep 1
+                        done
+                        
+                        set -e  # Volver a modo estricto
+                        
+                        BASE_URL="http://localhost:8100"
                         
                         echo "🚀 =============================================="
                         echo "🚀 Ejecutando Performance Tests con Locust"
                         echo "🚀 Target: \$BASE_URL"
                         echo "🚀 =============================================="
                         
+                        # Crear directorio para reportes
+                        mkdir -p reports
+                        
                         # Ejecuta locust dentro de un contenedor docker
-                        # --network host: Permite al contenedor ver la red local (y por ende, GKE)
+                        # --network host: Permite al contenedor acceder a localhost del host
                         # -v \${WORKSPACE}:/mnt/locust: Monta tu código
                         docker run --rm --network host -v "\${WORKSPACE}":/mnt/locust -w /mnt/locust \
                             locustio/locust \
@@ -217,19 +284,34 @@ pipeline {
                             --csv=reports/locust --exit-code-on-fail 0
                         
                         echo "✅ Performance tests completados"
+                        
+                        # Limpiar port-forward
+                        echo "🧹 Limpiando port-forward..."
+                        kill \$PORT_FORWARD_PID 2>/dev/null || true
+                        
+                        # Mostrar estadísticas si existen
+                        if [ -f "reports/locust_stats.csv" ]; then
+                            echo ""
+                            echo "📊 =============================================="
+                            echo "📊 RESUMEN DE PERFORMANCE TESTS"
+                            echo "📊 =============================================="
+                            cat reports/locust_stats.csv
+                        fi
                     """
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'reports_stats.csv', allowEmptyArchive: true
-                    
+                    script {
+                        sh "pkill -f 'kubectl port-forward.*proxy-client.*8100' || true"
+                    }
+                    archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
                     publishHTML([
                         allowMissing: true,
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
                         reportDir: 'reports',
-                        reportFiles: 'locust_report.html',
+                        reportFiles: 'load_test_report.html',
                         reportName: 'Locust Performance Report',
                         reportTitles: 'Performance Test Results'
                     ])
