@@ -1,0 +1,35 @@
+---
+# PersistentVolumeClaim para cachear dependencias de Maven
+# Esto acelera MUCHÍSIMO los builds al reutilizar ~/.m2/repository
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: maven-cache-pvc
+  namespace: staging
+  labels:
+    app: jenkins-tests
+    type: cache
+spec:
+  accessModes:
+    - ReadWriteOnce  # Un pod a la vez (suficiente para tests secuenciales)
+  resources:
+    requests:
+      storage: 5Gi  # 5GB es suficiente para dependencias Maven
+  storageClassName: standard-rwo  # GKE standard persistent disk
+---
+# PersistentVolumeClaim para cachear dependencias de npm (si usas Node.js)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: npm-cache-pvc
+  namespace: staging
+  labels:
+    app: jenkins-tests
+    type: cache
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: standard-rwo
