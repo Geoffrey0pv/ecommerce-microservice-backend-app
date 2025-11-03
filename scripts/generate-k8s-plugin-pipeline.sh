@@ -46,8 +46,6 @@ OUTPUT_FILE="jenkins-pipelines/${SERVICE_NAME}-stage-pipeline-k8s-plugin.groovy"
 
 # Generar el pipeline
 cat > "$OUTPUT_FILE" <<'EOF'
-@Library('shared-library') _
-
 pipeline {
     agent any
     

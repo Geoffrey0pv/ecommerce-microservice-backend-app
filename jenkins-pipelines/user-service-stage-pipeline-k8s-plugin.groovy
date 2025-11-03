@@ -1,21 +1,16 @@
-@Library('shared-library') _
-
 pipeline {
     agent any
     
     environment {
-        // GCP & GKE
         GCP_PROJECT = 'ecommerce-backend-1760307199'
         GCR_REGISTRY = 'us-central1-docker.pkg.dev'
         GKE_CLUSTER = 'ecommerce-devops-cluster'
         GKE_REGION = 'us-central1'
         K8S_NAMESPACE = 'staging'
         
-        // Imágenes
         IMAGE_NAME = "${GCR_REGISTRY}/${GCP_PROJECT}/ecommerce-microservices/user-service"
         IMAGE_TAG = 'latest-dev'
         
-        // Imágenes custom de tests (las que acabamos de crear)
         TEST_MAVEN_IMAGE = "${GCR_REGISTRY}/${GCP_PROJECT}/ecommerce-microservices/test-runner-maven:latest"
         TEST_LOCUST_IMAGE = "${GCR_REGISTRY}/${GCP_PROJECT}/ecommerce-microservices/test-runner-locust:latest"
     }
@@ -131,19 +126,11 @@ pipeline {
                 }
             }
         }
-        
-        //=======================================================================
-        // TESTS EN PARALELO usando Kubernetes Plugin
-        //=======================================================================
         stage('Run Tests in Parallel') {
             parallel {
-                //=============================================================
-                // E2E TESTS con podTemplate
-                //=============================================================
                 stage('E2E Tests (Maven)') {
                     agent {
                         kubernetes {
-                            // YAML del pod - mucho más limpio que heredocs
                             yaml """
 apiVersion: v1
 kind: Pod
@@ -217,9 +204,6 @@ spec:
                     }
                 }
                 
-                //=============================================================
-                // PERFORMANCE TESTS con podTemplate
-                //=============================================================
                 stage('Performance Tests (Locust)') {
                     agent {
                         kubernetes {
@@ -300,10 +284,9 @@ spec:
                         }
                     }
                 }
-            } // end parallel
-        } // end stage Run Tests in Parallel
-        
-    } // end stages
+            }
+        } 
+    }
     
     post {
         always {
