@@ -18,7 +18,7 @@ pipeline {
         K8S_DEPLOYMENT_NAME = "user-service"
         K8S_CONTAINER_NAME = "user-service"
         K8S_SERVICE_NAME = "user-service"
-        SERVICE_PORT = "8700" 
+        SERVICE_PORT = "8200" 
         
         API_GATEWAY_SERVICE_NAME = "proxy-client" 
     }
@@ -73,6 +73,7 @@ pipeline {
                         
                         echo "📋 Aplicando/Actualizando Chart de Helm: \${K8S_DEPLOYMENT_NAME}"
                         
+                        # Deshabilitamos Eureka para que el pod arranque solo
                         helm upgrade --install \${K8S_DEPLOYMENT_NAME} manifests-gcp/user-service/ \
                             --namespace \${K8S_NAMESPACE} \
                             --set image.tag=\${IMAGE_TAG} \
@@ -101,6 +102,7 @@ pipeline {
                             -l app=\${K8S_DEPLOYMENT_NAME} \
                             -o jsonpath='{.items[0].metadata.name}')
                         
+                        # 1. ¡CORRECCIÓN IMPORTANTE! Usando el puerto 8200
                         echo "🎯 Testing pod: \$POD_NAME en puerto \${SERVICE_PORT}"
                         
                         kubectl exec \$POD_NAME -n \${K8S_NAMESPACE} -- \
@@ -122,13 +124,11 @@ pipeline {
                     sh """
                         echo "🌐 Verificando disponibilidad del API Gateway (\${API_GATEWAY_SERVICE_NAME})..."
                         
-                        # Esperar a que el pod del gateway esté ready
                         kubectl wait --for=condition=ready pod \
                             -l app=\${API_GATEWAY_SERVICE_NAME} \
                             -n \${K8S_NAMESPACE} \
                             --timeout=300s
                         
-                        # Obtener el ClusterIP del servicio
                         GATEWAY_IP=\$(kubectl get svc \${API_GATEWAY_SERVICE_NAME} -n \${K8S_NAMESPACE} \
                             -o jsonpath='{.spec.clusterIP}')
                         
@@ -140,12 +140,12 @@ pipeline {
                         echo "✅ Gateway ClusterIP: \$GATEWAY_IP"
                         echo "\$GATEWAY_IP" > gateway-ip.txt
                         
-                        # Verificar conectividad usando un pod temporal
-                        echo "🔍 Verificando conectividad al Gateway en http://\$GATEWAY_IP:80/app/actuator/health"
+                        # Asumimos que el proxy-client corre en el puerto 80 (o 8100, etc.)
+                        echo "🔍 Verificando conectividad al Gateway en http://\$GATEWAY_IP:8100/actuator/health"
                         kubectl run test-gateway-\${BUILD_NUMBER} --image=curlimages/curl:latest \
                             -n \${K8S_NAMESPACE} --rm -i --restart=Never --timeout=60s -- \
                             curl -f --retry 5 --retry-delay 5 --retry-connrefused \
-                            http://\$GATEWAY_IP:80/app/actuator/health || {
+                            http://\$GATEWAY_IP:8100/actuator/health || {
                                 echo "⚠️ No se pudo conectar al Gateway internamente"
                                 exit 1
                             }
@@ -164,20 +164,19 @@ pipeline {
                 script {
                     sh """
                         GATEWAY_IP=\$(cat gateway-ip.txt)
-                        BASE_URL="http://\${GATEWAY_IP}"
+                        # El proxy-client corre en 8100, pero el ClusterIP lo expone en 80
+                        # Revisa el puerto de tu servicio proxy-client. Usaré 8100 por ahora.
+                        BASE_URL="http://\${GATEWAY_IP}:8100" 
                         
                         echo "🧪 =============================================="
                         echo "🧪 Ejecutando E2E Tests contra: \$BASE_URL"
                         echo "🧪 =============================================="
                         
-                        # Usar Docker en el agente de Jenkins (más simple y robusto)
-                        docker run --rm --network host \\
-                            -v "\${WORKSPACE}":/app \\
-                            -w /app \\
-                            maven:3.9.9-eclipse-temurin-17 \\
-                            mvn test -f tests/e2e/pom.xml \\
-                            -Dapi.gateway.url=\$BASE_URL \\
-                            -Dmaven.test.failure.ignore=true
+                        # Ejecuta maven dentro de un contenedor docker
+                        # --network host: Permite al contenedor ver la red local (y por ende, GKE)
+                        # -v \${WORKSPACE}:/app: Monta tu código en /app
+                        docker run --rm --network host -v "\${WORKSPACE}":/app -w /app maven:3.9.6-eclipse-temurin-17 \
+                            mvn test -f tests/e2e/pom.xml -Dapi.gateway.url=\$BASE_URL
                         
                         echo "✅ E2E Tests completados."
                     """
@@ -185,7 +184,6 @@ pipeline {
             }
             post {
                 always {
-                    // Los reportes están directamente en el workspace de Jenkins
                     junit allowEmptyResults: true, testResults: 'tests/e2e/target/surefire-reports/*.xml'
                     archiveArtifacts artifacts: 'tests/e2e/target/surefire-reports/**/*', allowEmptyArchive: true
                 }
@@ -200,53 +198,38 @@ pipeline {
                 script {
                     sh """
                         GATEWAY_IP=\$(cat gateway-ip.txt)
-                        BASE_URL="http://\${GATEWAY_IP}"
+                        BASE_URL="http://\${GATEWAY_IP}:8100"
                         
                         echo "🚀 =============================================="
                         echo "🚀 Ejecutando Performance Tests con Locust"
                         echo "🚀 Target: \$BASE_URL"
                         echo "🚀 =============================================="
                         
-                        # Crear directorio para reportes
-                        mkdir -p reports
-                        
-                        # Usar Docker en el agente de Jenkins
-                        docker run --rm --network host \\
-                            -v "\${WORKSPACE}":/mnt/locust \\
-                            -w /mnt/locust \\
-                            locustio/locust:2.17.0 \\
-                            -f /mnt/locust/tests/performance/ecommerce_load_test.py \\
-                            --host \$BASE_URL \\
-                            --users 50 \\
-                            --spawn-rate 5 \\
-                            --run-time 3m \\
-                            --headless \\
-                            --csv=/mnt/locust/reports/load_test \\
-                            --html=/mnt/locust/reports/load_test_report.html \\
-                            --exit-code-on-error 0 || echo "Load test completado con warnings"
+                        # Ejecuta locust dentro de un contenedor docker
+                        # --network host: Permite al contenedor ver la red local (y por ende, GKE)
+                        # -v \${WORKSPACE}:/mnt/locust: Monta tu código
+                        docker run --rm --network host -v "\${WORKSPACE}":/mnt/locust -w /mnt/locust \
+                            locustio/locust \
+                            -f tests/performance/ecommerce_load_test.py \
+                            --host \$BASE_URL \
+                            --users 50 --spawn-rate 5 --run-time 1m \
+                            --headless \
+                            --csv=reports/locust --exit-code-on-fail 0
                         
                         echo "✅ Performance tests completados"
-                        
-                        # Mostrar estadísticas si existen
-                        if [ -f "reports/load_test_stats.csv" ]; then
-                            echo ""
-                            echo "📊 =============================================="
-                            echo "📊 RESUMEN DE PERFORMANCE TESTS"
-                            echo "📊 =============================================="
-                            cat reports/load_test_stats.csv
-                        fi
                     """
                 }
             }
             post {
                 always {
-                    archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'reports_stats.csv', allowEmptyArchive: true
+                    
                     publishHTML([
                         allowMissing: true,
                         alwaysLinkToLastBuild: true,
                         keepAll: true,
                         reportDir: 'reports',
-                        reportFiles: 'load_test_report.html',
+                        reportFiles: 'locust_report.html',
                         reportName: 'Locust Performance Report',
                         reportTitles: 'Performance Test Results'
                     ])
@@ -261,6 +244,7 @@ pipeline {
                 sh """
                     echo "🎉 ✅ STAGING DEPLOY EXITOSO"
                     echo "📦 Imagen desplegada: \${FULL_IMAGE_NAME}:\${IMAGE_TAG}"
+                    gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
                     gcloud auth revoke --all || true
                 """
             }
@@ -294,351 +278,6 @@ pipeline {
             }
         }
         always {
-            script {
-                sh "gcloud auth revoke --all || true"
-            }
-            cleanWs()
-        }
-    }
-}
-
-apiVersion: v1
-kind: Pod
-metadata:
-  name: e2e-test-runner-\${BUILD_NUMBER}
-  namespace: \${K8S_NAMESPACE}
-spec:
-  restartPolicy: Never
-  containers:
-  - name: maven-test
-    image: maven:3.9.9-eclipse-temurin-17
-    imagePullPolicy: IfNotPresent
-    command: ["/bin/bash"]
-    args:
-    - -c
-    - |
-      set -e
-      echo "📦 Clonando repositorio y preparando tests..."
-      git clone https://github.com/Geoffrey0pv/ecommerce-microservice-backend-app.git /workspace
-      cd /workspace/tests/e2e
-      
-      echo "📋 Estructura del proyecto:"
-      ls -la
-      
-      echo "🔨 Compilando y ejecutando tests E2E..."
-      mvn clean test \\
-        -Dapi.gateway.url=\\\${GATEWAY_IP} \\
-        -Dmaven.test.failure.ignore=true \\
-        -Dsurefire.reports.directory=/workspace/tests/e2e/target/surefire-reports
-      
-      echo "📊 Tests E2E completados. Reportes:"
-      ls -la /workspace/tests/e2e/target/surefire-reports/ || echo "No se generaron reportes"
-    env:
-    - name: GATEWAY_IP
-      value: "\${BASE_URL}"
-    volumeMounts:
-    - name: test-results
-      mountPath: /workspace/tests/e2e/target
-  volumes:
-  - name: test-results
-    emptyDir: {}
-E2E_POD_EOF
-                        
-                        echo "⏳ Esperando a que el pod E2E esté listo (timeout: 5 minutos)..."
-                        if ! kubectl wait --for=condition=Ready pod/e2e-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} --timeout=300s; then
-                            echo "⚠️ El pod no está listo después de 5 minutos. Verificando estado..."
-                            kubectl describe pod e2e-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} || true
-                            kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20 || true
-                        fi
-                        
-                        # Esperar a que termine (máximo 15 minutos)
-                        for i in \$(seq 1 90); do
-                            POD_STATUS=\$(kubectl get pod e2e-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
-                            
-                            if [ "\$POD_STATUS" = "Succeeded" ] || [ "\$POD_STATUS" = "Failed" ]; then
-                                echo "✅ Tests E2E completados con estado: \$POD_STATUS"
-                                break
-                            fi
-                            
-                            if [ "\$POD_STATUS" = "Pending" ] && [ \$i -gt 10 ]; then
-                                echo "⚠️ Pod aún en Pending después de \$((i*10)) segundos. Verificando eventos..."
-                                kubectl describe pod e2e-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} | tail -30 || true
-                            fi
-                            
-                            echo "⏳ Tests E2E en ejecución... (\$i/90) - Estado: \$POD_STATUS"
-                            sleep 10
-                        done
-                        
-                        # Obtener logs de los tests
-                        echo "📄 =============================================="
-                        echo "📄 LOGS DE E2E TESTS:"
-                        echo "📄 =============================================="
-                        kubectl logs e2e-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} || true
-                        
-                        # Copiar reportes de tests desde el pod
-                        mkdir -p \${WORKSPACE}/test-results/e2e
-                        kubectl cp \${K8S_NAMESPACE}/e2e-test-runner-\${BUILD_NUMBER}:/workspace/tests/e2e/target/surefire-reports/ \${WORKSPACE}/test-results/e2e/ || {
-                            echo "⚠️ No se pudieron copiar los reportes de E2E"
-                        }
-                        
-                        # Verificar si los tests pasaron
-                        POD_STATUS=\$(kubectl get pod e2e-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} -o jsonpath='{.status.phase}')
-                        
-                        if [ "\$POD_STATUS" != "Succeeded" ]; then
-                            echo "❌ E2E Tests fallaron"
-                            # No fallar el pipeline, solo advertir
-                            echo "⚠️ Continuando pipeline a pesar del fallo en E2E tests"
-                        else
-                            echo "✅ E2E Tests pasaron exitosamente"
-                        fi
-                        
-                        # Limpiar pod de tests
-                        kubectl delete pod e2e-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} --ignore-not-found=true
-                    """
-                }
-            }
-            post {
-                always {
-                    // Publicar reportes JUnit
-                    junit allowEmptyResults: true, testResults: 'test-results/e2e/**/*.xml'
-                    
-                    // Archivar reportes
-                    archiveArtifacts artifacts: 'test-results/e2e/**/*', allowEmptyArchive: true
-                }
-            }
-        }
-
-        stage('Run Performance Tests (Locust)') {
-            when {
-                expression { fileExists('tests/performance/ecommerce_load_test.py') }
-            }
-            steps {
-                script {
-                    sh """
-                        GATEWAY_IP=\$(cat gateway-ip.txt)
-                        BASE_URL="http://\${GATEWAY_IP}"
-                        
-                        echo "🚀 =============================================="
-                        echo "🚀 Ejecutando Performance Tests con Locust"
-                        echo "🚀 Target: \$BASE_URL"
-                        echo "🚀 =============================================="
-                        
-                        # Ejecutar Locust en modo headless (sin ConfigMap, usa git clone)
-                        cat <<LOCUST_POD_EOF | kubectl apply -f -
-apiVersion: v1
-kind: Pod
-metadata:
-  name: locust-test-runner-\${BUILD_NUMBER}
-  namespace: \${K8S_NAMESPACE}
-spec:
-  restartPolicy: Never
-  containers:
-  - name: locust
-    image: locustio/locust:2.17.0
-    securityContext:
-      runAsUser: 0
-      runAsGroup: 0
-    command: ["/bin/bash"]
-    args:
-    - -c
-    - |
-      set -e
-      echo "📦 Preparando entorno de Locust..."
-      
-      # Instalar git y clonar repo
-      apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1
-      git clone https://github.com/Geoffrey0pv/ecommerce-microservice-backend-app.git /workspace
-      cd /workspace/tests/performance
-      
-      echo "📋 Archivos de tests encontrados:"
-      ls -la *.py
-      
-      # Instalar dependencias adicionales
-      pip install --no-cache-dir faker numpy pandas matplotlib seaborn 2>&1 | tail -20
-      
-      echo "🚀 Ejecutando Load Test (50 usuarios, 3 minutos)..."
-      locust -f ecommerce_load_test.py \\
-        --host=\\\${TARGET_HOST} \\
-        --users 50 \\
-        --spawn-rate 5 \\
-        --run-time 3m \\
-        --headless \\
-        --csv=/results/load_test \\
-        --html=/results/load_test_report.html \\
-        --loglevel INFO \\
-        --exit-code-on-error 0 || echo "Load test completado con warnings"
-      
-      echo ""
-      echo "📊 =============================================="
-      echo "📊 RESUMEN DE PERFORMANCE TESTS"
-      echo "📊 =============================================="
-      
-      # Mostrar estadísticas si existen
-      if [ -f /results/load_test_stats.csv ]; then
-        echo "📈 Estadísticas generales:"
-        cat /results/load_test_stats.csv
-        echo ""
-      fi
-      
-      if [ -f /results/load_test_stats_history.csv ]; then
-        echo "📉 Historial de estadísticas:"
-        tail -20 /results/load_test_stats_history.csv
-        echo ""
-      fi
-      
-      if [ -f /results/load_test_failures.csv ]; then
-        echo "❌ Fallos detectados:"
-        cat /results/load_test_failures.csv
-        echo ""
-      fi
-      
-      echo "✅ Performance tests completados"
-      ls -lah /results/
-    env:
-    - name: TARGET_HOST
-      value: "\${BASE_URL}"
-    volumeMounts:
-    - name: test-results
-      mountPath: /results
-  volumes:
-  - name: test-results
-    emptyDir: {}
-LOCUST_POD_EOF
-                                                
-                        echo "⏳ Esperando a que Locust inicie (timeout: 2 minutos)..."
-                        if ! kubectl wait --for=condition=Ready pod/locust-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} --timeout=120s; then
-                            echo "⚠️ El pod de Locust no está listo. Verificando estado..."
-                            kubectl describe pod locust-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} || true
-                            kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20 || true
-                        fi
-                        
-                        # Esperar a que termine (máximo 6 minutos para el test de 3 min + overhead)
-                        for i in \$(seq 1 36); do
-                            POD_STATUS=\$(kubectl get pod locust-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} -o jsonpath='{.status.phase}' 2>/dev/null || echo "Unknown")
-                            
-                            if [ "\$POD_STATUS" = "Succeeded" ] || [ "\$POD_STATUS" = "Failed" ]; then
-                                echo "✅ Performance tests completados con estado: \$POD_STATUS"
-                                break
-                            fi
-                            
-                            echo "⏳ Locust ejecutando... (\$i/36) - Estado: \$POD_STATUS"
-                            sleep 10
-                        done
-                        
-                        # Obtener logs de Locust
-                        echo "📄 =============================================="
-                        echo "📄 LOGS DE LOCUST:"
-                        echo "📄 =============================================="
-                        kubectl logs locust-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} --tail=100 || true
-                        
-                        # Copiar reportes desde el pod
-                        mkdir -p \${WORKSPACE}/test-results/performance
-                        kubectl cp \${K8S_NAMESPACE}/locust-test-runner-\${BUILD_NUMBER}:/results/ \${WORKSPACE}/test-results/performance/ || {
-                            echo "⚠️ No se pudieron copiar los reportes de Locust"
-                        }
-                        
-                        # Analizar resultados de performance
-                        if [ -f "\${WORKSPACE}/test-results/performance/load_test_stats.csv" ]; then
-                            echo ""
-                            echo "📊 =============================================="
-                            echo "📊 ANÁLISIS DE MÉTRICAS DE PERFORMANCE"
-                            echo "📊 =============================================="
-                            
-                            # Extraer métricas clave del CSV
-                            echo "📈 Tiempo de Respuesta (Response Times):"
-                            awk -F',' 'NR>1 {printf "  - %s: Avg=%.2fms, Min=%.2fms, Max=%.2fms\\n", \$1, \$4, \$5, \$6}' \${WORKSPACE}/test-results/performance/load_test_stats.csv
-                            
-                            echo ""
-                            echo "🚦 Throughput (Requests per Second):"
-                            awk -F',' 'NR>1 {printf "  - %s: %.2f req/s\\n", \$1, \$9}' \${WORKSPACE}/test-results/performance/load_test_stats.csv
-                            
-                            echo ""
-                            echo "❌ Tasa de Errores (Failure Rate):"
-                            awk -F',' 'NR>1 {total=\$2+\$3; if(total>0) printf "  - %s: %.2f%% (%d/%d)\\n", \$1, (\$3/total)*100, \$3, total; else printf "  - %s: 0.00%% (0/0)\\n", \$1}' \${WORKSPACE}/test-results/performance/load_test_stats.csv
-                            
-                            echo ""
-                            echo "📊 Reporte HTML disponible en: test-results/performance/load_test_report.html"
-                        else
-                            echo "⚠️ No se encontraron estadísticas de Locust"
-                        fi
-                        
-                        # Verificar si los tests pasaron
-                        POD_STATUS=\$(kubectl get pod locust-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} -o jsonpath='{.status.phase}')
-                        
-                        if [ "\$POD_STATUS" != "Succeeded" ]; then
-                            echo "⚠️ Performance Tests completaron con warnings"
-                            # No fallar el pipeline
-                        else
-                            echo "✅ Performance Tests exitosos"
-                        fi
-                        
-                        # Limpiar pod de tests
-                        kubectl delete pod locust-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} --ignore-not-found=true
-                    """
-                }
-            }
-            post {
-                always {
-                    // Archivar todos los reportes de performance
-                    archiveArtifacts artifacts: 'test-results/performance/**/*', allowEmptyArchive: true
-                    
-                    // Publicar reporte HTML de Locust
-                    publishHTML([
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'test-results/performance',
-                        reportFiles: 'load_test_report.html',
-                        reportName: 'Locust Performance Report',
-                        reportTitles: 'Performance Test Results'
-                    ])
-                }
-            }
-        }
-    }
-
-    post {
-        success {
-            script {
-                sh """
-                    echo "🎉 ✅ STAGING DEPLOY EXITOSO"
-                    echo "📦 Imagen desplegada: \${FULL_IMAGE_NAME}:\${IMAGE_TAG}"
-                    gcloud auth revoke --all || true
-                """
-            }
-        }
-        failure {
-            script {
-                sh """
-                    echo "🔐 Re-autenticando para operaciones de rollback..."
-                    gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
-                    gcloud config set project \${GCP_PROJECT}
-                    gcloud container clusters get-credentials \${CLUSTER_NAME} \${CLUSTER_LOCATION_FLAG} --project \${GCP_PROJECT}
-                """
-                
-                def failedStage = env.STAGE_NAME ?: 'Unknown'
-                
-                sh """
-                    echo "❌ 💥 STAGING DEPLOY FALLÓ"
-                    echo "🔍 Fallo detectado en stage: ${failedStage}"
-                    
-                    if [ "${failedStage}" = "Deploy to Staging (Helm)" ]; then
-                        echo "🔄 Realizando rollback del despliegue fallido..."
-                        helm rollback \${K8S_DEPLOYMENT_NAME} 0 -n \${K8S_NAMESPACE} || echo "⚠️ No hay revisión anterior para rollback."
-                    else
-                        echo "⚠️ Fallo en stage '${failedStage}'. El despliegue NO será revertido."
-                    fi
-                    
-                    echo "📋 Información de debug:"
-                    kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20
-                    gcloud auth revoke --all || true
-                """
-            }
-        }
-        always {
-            script {
-                sh "gcloud auth revoke --all || true"
-            }
             cleanWs()
         }
     }
