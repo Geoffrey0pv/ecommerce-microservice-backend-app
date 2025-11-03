@@ -29,7 +29,7 @@ pipeline {
         stage('Authenticate GCP & Kubernetes') {
             steps {
                 script {
-                    withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_CREDENTIALS')]) {
+                    withCredentials([file(credentialsId: 'gke-credentials', variable: 'GCP_CREDENTIALS')]) {
                         sh '''
                             echo "🔐 Autenticando con GCP..."
                             gcloud auth activate-service-account --key-file=${GCP_CREDENTIALS}
@@ -292,7 +292,7 @@ spec:
     post {
         always {
             script {
-                withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_CREDENTIALS')]) {
+                withCredentials([file(credentialsId: 'gke-credentials', variable: 'GCP_CREDENTIALS')]) {
                     sh 'gcloud auth revoke --all || true'
                 }
             }
@@ -300,7 +300,7 @@ spec:
         }
         failure {
             script {
-                withCredentials([file(credentialsId: 'gcp-service-account-key', variable: 'GCP_CREDENTIALS')]) {
+                withCredentials([file(credentialsId: 'gke-credentials', variable: 'GCP_CREDENTIALS')]) {
                     sh '''
                         echo "❌ 💥 STAGING DEPLOY FALLÓ"
                         echo "🔍 Fallo detectado en stage: ${STAGE_NAME}"
