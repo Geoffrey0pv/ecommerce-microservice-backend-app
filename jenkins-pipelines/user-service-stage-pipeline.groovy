@@ -1,8 +1,5 @@
 pipeline {
-    ag        K8S_DEPLOYMENT_NAME = "user-service"
-        K8S_CONTAINER_NAME = "user-service"
-        K8S_SERVICE_NAME = "user-service"
-        SERVICE_PORT = "8700"any
+    agent any
     
     environment {
         IMAGE_NAME = "user-service"
@@ -21,7 +18,7 @@ pipeline {
         K8S_DEPLOYMENT_NAME = "user-service"
         K8S_CONTAINER_NAME = "user-service"
         K8S_SERVICE_NAME = "user-service"
-        SERVICE_PORT = "8200" 
+        SERVICE_PORT = "8700" 
         
         API_GATEWAY_SERVICE_NAME = "proxy-client" 
     }
