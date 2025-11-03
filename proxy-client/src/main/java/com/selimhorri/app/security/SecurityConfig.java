@@ -2,6 +2,7 @@ package com.selimhorri.app.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
@@ -18,8 +19,14 @@ import com.selimhorri.app.config.filter.JwtRequestFilter;
 
 import lombok.RequiredArgsConstructor;
 
+/**
+ * Security configuration with JWT authentication.
+ * Active for all profiles EXCEPT staging (production, default, etc.)
+ * For staging environment, NoSecurityConfig is used instead.
+ */
 @Configuration
 @EnableWebSecurity
+@Profile("!staging")
 @RequiredArgsConstructor
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
 	

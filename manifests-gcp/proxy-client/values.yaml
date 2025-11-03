@@ -31,7 +31,7 @@ livenessProbe:
 
 env:
   - name: SPRING_PROFILES_ACTIVE
-    value: "dev"
+    value: "staging"
   - name: SPRING_ZIPKIN_BASE_URL
     value: "http://zipkin:9411/"
   - name: eureka.client.service-url.defaultZone

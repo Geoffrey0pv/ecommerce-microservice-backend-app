@@ -1,7 +1,6 @@
 package com.selimhorri.app.e2e;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.selimhorri.app.e2e.helper.JwtAuthHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
@@ -27,7 +26,6 @@ public class PerformanceAndLoadE2ETest {
     private TestRestTemplate restTemplate;
     private ObjectMapper objectMapper;
     private String baseUrl;
-    private JwtAuthHelper authHelper;
 
     // Performance metrics
     private final Map<String, List<Long>> performanceMetrics = new ConcurrentHashMap<>();
@@ -39,8 +37,6 @@ public class PerformanceAndLoadE2ETest {
         objectMapper = new ObjectMapper();
         // Read from system property passed by Maven: -Dapi.gateway.url=http://10.22.10.27
         baseUrl = System.getProperty("api.gateway.url", "http://localhost:8100");
-        authHelper = new JwtAuthHelper(baseUrl);
-        authHelper.authenticateAndGetToken();
         System.out.println("🌐 Testing against Gateway: " + baseUrl);
         
         // Initialize metrics
@@ -684,7 +680,9 @@ public class PerformanceAndLoadE2ETest {
     private HttpEntity<String> createJsonEntity(Map<String, Object> body) {
         try {
             String json = objectMapper.writeValueAsString(body);
-            return new HttpEntity<>(json, authHelper.createAuthHeaders());
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            return new HttpEntity<>(json, headers);
         } catch (Exception e) {
             throw new RuntimeException("Failed to create JSON entity", e);
         }
