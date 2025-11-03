@@ -175,50 +175,50 @@ pipeline {
                         
                         # Ejecutar tests en un pod con Maven
                         cat <<E2E_POD_EOF | kubectl apply -f -
-                        apiVersion: v1
-                        kind: Pod
-                        metadata:
-                        name: e2e-test-runner-\${BUILD_NUMBER}
-                        namespace: \${K8S_NAMESPACE}
-                        spec:
-                        restartPolicy: Never
-                        containers:
-                        - name: maven-test
-                            image: maven:3.8.6-openjdk-17-slim
-                            imagePullPolicy: IfNotPresent
-                            command: ["/bin/bash"]
-                            args:
-                            - -c
-                            - |
-                            set -e
-                            echo "📦 Copiando código de tests..."
-                            mkdir -p /workspace
-                            cp -r /tests-code/* /workspace/
-                            cd /workspace
-                            
-                            echo "🔨 Compilando y ejecutando tests E2E..."
-                            mvn clean test \\
-                                -Dapi.gateway.url=\\\${GATEWAY_IP} \\
-                                -Dmaven.test.failure.ignore=true \\
-                                -Dsurefire.reports.directory=/workspace/target/surefire-reports
-                            
-                            echo "📊 Tests E2E completados. Generando reportes..."
-                            ls -la /workspace/target/surefire-reports/ || true
-                            env:
-                            - name: GATEWAY_IP
-                            value: "\${BASE_URL}"
-                            volumeMounts:
-                            - name: tests-code
-                            mountPath: /tests-code
-                            - name: test-results
-                            mountPath: /workspace/target
-                        volumes:
-                        - name: tests-code
-                            configMap:
-                            name: e2e-tests-code
-                        - name: test-results
-                            emptyDir: {}
-                        E2E_POD_EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: e2e-test-runner-\${BUILD_NUMBER}
+  namespace: \${K8S_NAMESPACE}
+spec:
+  restartPolicy: Never
+  containers:
+  - name: maven-test
+    image: maven:3.8.6-openjdk-17-slim
+    imagePullPolicy: IfNotPresent
+    command: ["/bin/bash"]
+    args:
+    - -c
+    - |
+      set -e
+      echo "📦 Copiando código de tests..."
+      mkdir -p /workspace
+      cp -r /tests-code/* /workspace/
+      cd /workspace
+      
+      echo "🔨 Compilando y ejecutando tests E2E..."
+      mvn clean test \\
+        -Dapi.gateway.url=\\\${GATEWAY_IP} \\
+        -Dmaven.test.failure.ignore=true \\
+        -Dsurefire.reports.directory=/workspace/target/surefire-reports
+      
+      echo "📊 Tests E2E completados. Generando reportes..."
+      ls -la /workspace/target/surefire-reports/ || true
+    env:
+    - name: GATEWAY_IP
+      value: "\${BASE_URL}"
+    volumeMounts:
+    - name: tests-code
+      mountPath: /tests-code
+    - name: test-results
+      mountPath: /workspace/target
+  volumes:
+  - name: tests-code
+    configMap:
+      name: e2e-tests-code
+  - name: test-results
+    emptyDir: {}
+E2E_POD_EOF
                         
                         echo "⏳ Esperando a que el pod E2E esté listo (timeout: 5 minutos)..."
                         if ! kubectl wait --for=condition=Ready pod/e2e-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} --timeout=300s; then
@@ -304,82 +304,82 @@ pipeline {
                         
                         # Ejecutar Locust en modo headless
                         cat <<LOCUST_POD_EOF | kubectl apply -f -
-                        apiVersion: v1
-                        kind: Pod
-                        metadata:
-                        name: locust-test-runner-\${BUILD_NUMBER}
-                        namespace: \${K8S_NAMESPACE}
-                        spec:
-                        restartPolicy: Never
-                        containers:
-                        - name: locust
-                            image: locustio/locust:2.17.0
-                            command: ["/bin/bash"]
-                            args:
-                            - -c
-                            - |
-                            set -e
-                            echo "📦 Preparando entorno de Locust..."
-                            mkdir -p /workspace
-                            cp -r /locust-code/* /workspace/
-                            cd /workspace
-                            
-                            # Instalar dependencias adicionales
-                            pip install --no-cache-dir faker numpy pandas matplotlib seaborn 2>&1 | tail -20
-                            
-                            echo "🚀 Ejecutando Load Test (100 usuarios, 5 minutos)..."
-                            locust -f ecommerce_load_test.py \\
-                                --host=\\\${TARGET_HOST} \\
-                                --users 100 \\
-                                --spawn-rate 10 \\
-                                --run-time 5m \\
-                                --headless \\
-                                --csv=/results/load_test \\
-                                --html=/results/load_test_report.html \\
-                                --loglevel INFO \\
-                                --exit-code-on-error 0 || echo "Load test completado con warnings"
-                            
-                            echo ""
-                            echo "📊 =============================================="
-                            echo "📊 RESUMEN DE PERFORMANCE TESTS"
-                            echo "📊 =============================================="
-                            
-                            # Mostrar estadísticas si existen
-                            if [ -f /results/load_test_stats.csv ]; then
-                                echo "📈 Estadísticas generales:"
-                                cat /results/load_test_stats.csv
-                                echo ""
-                            fi
-                            
-                            if [ -f /results/load_test_stats_history.csv ]; then
-                                echo "📉 Historial de estadísticas:"
-                                tail -20 /results/load_test_stats_history.csv
-                                echo ""
-                            fi
-                            
-                            if [ -f /results/load_test_failures.csv ]; then
-                                echo "❌ Fallos detectados:"
-                                cat /results/load_test_failures.csv
-                                echo ""
-                            fi
-                            
-                            echo "✅ Performance tests completados"
-                            ls -lah /results/
-                            env:
-                            - name: TARGET_HOST
-                            value: "\${BASE_URL}"
-                            volumeMounts:
-                            - name: locust-code
-                            mountPath: /locust-code
-                            - name: test-results
-                            mountPath: /results
-                        volumes:
-                        - name: locust-code
-                            configMap:
-                            name: locust-tests-code
-                        - name: test-results
-                            emptyDir: {}
-                        LOCUST_POD_EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: locust-test-runner-\${BUILD_NUMBER}
+  namespace: \${K8S_NAMESPACE}
+spec:
+  restartPolicy: Never
+  containers:
+  - name: locust
+    image: locustio/locust:2.17.0
+    command: ["/bin/bash"]
+    args:
+    - -c
+    - |
+      set -e
+      echo "📦 Preparando entorno de Locust..."
+      mkdir -p /workspace
+      cp -r /locust-code/* /workspace/
+      cd /workspace
+      
+      # Instalar dependencias adicionales
+      pip install --no-cache-dir faker numpy pandas matplotlib seaborn 2>&1 | tail -20
+      
+      echo "🚀 Ejecutando Load Test (100 usuarios, 5 minutos)..."
+      locust -f ecommerce_load_test.py \\
+        --host=\\\${TARGET_HOST} \\
+        --users 100 \\
+        --spawn-rate 10 \\
+        --run-time 5m \\
+        --headless \\
+        --csv=/results/load_test \\
+        --html=/results/load_test_report.html \\
+        --loglevel INFO \\
+        --exit-code-on-error 0 || echo "Load test completado con warnings"
+      
+      echo ""
+      echo "📊 =============================================="
+      echo "📊 RESUMEN DE PERFORMANCE TESTS"
+      echo "📊 =============================================="
+      
+      # Mostrar estadísticas si existen
+      if [ -f /results/load_test_stats.csv ]; then
+        echo "📈 Estadísticas generales:"
+        cat /results/load_test_stats.csv
+        echo ""
+      fi
+      
+      if [ -f /results/load_test_stats_history.csv ]; then
+        echo "📉 Historial de estadísticas:"
+        tail -20 /results/load_test_stats_history.csv
+        echo ""
+      fi
+      
+      if [ -f /results/load_test_failures.csv ]; then
+        echo "❌ Fallos detectados:"
+        cat /results/load_test_failures.csv
+        echo ""
+      fi
+      
+      echo "✅ Performance tests completados"
+      ls -lah /results/
+    env:
+    - name: TARGET_HOST
+      value: "\${BASE_URL}"
+    volumeMounts:
+    - name: locust-code
+      mountPath: /locust-code
+    - name: test-results
+      mountPath: /results
+  volumes:
+  - name: locust-code
+    configMap:
+      name: locust-tests-code
+  - name: test-results
+    emptyDir: {}
+LOCUST_POD_EOF
                                                 
                         echo "⏳ Esperando a que Locust inicie (timeout: 2 minutos)..."
                         if ! kubectl wait --for=condition=Ready pod/locust-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} --timeout=120s; then
