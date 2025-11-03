@@ -170,10 +170,7 @@ pipeline {
                         echo "🧪 Ejecutando E2E Tests contra: \$BASE_URL"
                         echo "🧪 =============================================="
                         
-                        # Crear ConfigMap con el código de tests
-                        kubectl create configmap e2e-tests-code --from-file=tests/e2e/ -n \${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                        
-                        # Ejecutar tests en un pod con Maven
+                        # Ejecutar tests en un pod con Maven (sin ConfigMap, usa git clone)
                         cat <<E2E_POD_EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
@@ -191,31 +188,28 @@ spec:
     - -c
     - |
       set -e
-      echo "📦 Copiando código de tests..."
-      mkdir -p /workspace
-      cp -r /tests-code/* /workspace/
-      cd /workspace
+      echo "📦 Clonando repositorio y preparando tests..."
+      git clone https://github.com/Geoffrey0pv/ecommerce-microservice-backend-app.git /workspace
+      cd /workspace/tests/e2e
+      
+      echo "📋 Estructura del proyecto:"
+      ls -la
       
       echo "🔨 Compilando y ejecutando tests E2E..."
       mvn clean test \\
         -Dapi.gateway.url=\\\${GATEWAY_IP} \\
         -Dmaven.test.failure.ignore=true \\
-        -Dsurefire.reports.directory=/workspace/target/surefire-reports
+        -Dsurefire.reports.directory=/workspace/tests/e2e/target/surefire-reports
       
-      echo "📊 Tests E2E completados. Generando reportes..."
-      ls -la /workspace/target/surefire-reports/ || true
+      echo "📊 Tests E2E completados. Reportes:"
+      ls -la /workspace/tests/e2e/target/surefire-reports/ || echo "No se generaron reportes"
     env:
     - name: GATEWAY_IP
       value: "\${BASE_URL}"
     volumeMounts:
-    - name: tests-code
-      mountPath: /tests-code
     - name: test-results
-      mountPath: /workspace/target
+      mountPath: /workspace/tests/e2e/target
   volumes:
-  - name: tests-code
-    configMap:
-      name: e2e-tests-code
   - name: test-results
     emptyDir: {}
 E2E_POD_EOF
@@ -253,7 +247,7 @@ E2E_POD_EOF
                         
                         # Copiar reportes de tests desde el pod
                         mkdir -p \${WORKSPACE}/test-results/e2e
-                        kubectl cp \${K8S_NAMESPACE}/e2e-test-runner-\${BUILD_NUMBER}:/workspace/target/surefire-reports/ \${WORKSPACE}/test-results/e2e/ || {
+                        kubectl cp \${K8S_NAMESPACE}/e2e-test-runner-\${BUILD_NUMBER}:/workspace/tests/e2e/target/surefire-reports/ \${WORKSPACE}/test-results/e2e/ || {
                             echo "⚠️ No se pudieron copiar los reportes de E2E"
                         }
                         
@@ -299,10 +293,7 @@ E2E_POD_EOF
                         echo "🚀 Target: \$BASE_URL"
                         echo "🚀 =============================================="
                         
-                        # Crear ConfigMap con scripts de Locust
-                        kubectl create configmap locust-tests-code --from-file=tests/performance/ -n \${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                        
-                        # Ejecutar Locust en modo headless
+                        # Ejecutar Locust en modo headless (sin ConfigMap, usa git clone)
                         cat <<LOCUST_POD_EOF | kubectl apply -f -
 apiVersion: v1
 kind: Pod
@@ -314,15 +305,23 @@ spec:
   containers:
   - name: locust
     image: locustio/locust:2.17.0
+    securityContext:
+      runAsUser: 0
+      runAsGroup: 0
     command: ["/bin/bash"]
     args:
     - -c
     - |
       set -e
       echo "📦 Preparando entorno de Locust..."
-      mkdir -p /workspace
-      cp -r /locust-code/* /workspace/
-      cd /workspace
+      
+      # Instalar git y clonar repo
+      apt-get update -qq && apt-get install -y -qq git > /dev/null 2>&1
+      git clone https://github.com/Geoffrey0pv/ecommerce-microservice-backend-app.git /workspace
+      cd /workspace/tests/performance
+      
+      echo "📋 Archivos de tests encontrados:"
+      ls -la *.py
       
       # Instalar dependencias adicionales
       pip install --no-cache-dir faker numpy pandas matplotlib seaborn 2>&1 | tail -20
@@ -369,14 +368,9 @@ spec:
     - name: TARGET_HOST
       value: "\${BASE_URL}"
     volumeMounts:
-    - name: locust-code
-      mountPath: /locust-code
     - name: test-results
       mountPath: /results
   volumes:
-  - name: locust-code
-    configMap:
-      name: locust-tests-code
   - name: test-results
     emptyDir: {}
 LOCUST_POD_EOF
