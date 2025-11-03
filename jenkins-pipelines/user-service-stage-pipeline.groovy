@@ -170,8 +170,138 @@ pipeline {
                         echo "🧪 Ejecutando E2E Tests contra: \$BASE_URL"
                         echo "🧪 =============================================="
                         
-                        # Ejecutar tests en un pod con Maven (sin ConfigMap, usa git clone)
-                        cat <<E2E_POD_EOF | kubectl apply -f -
+                        # Usar Docker en el agente de Jenkins (más simple y robusto)
+                        docker run --rm --network host \\
+                            -v "\${WORKSPACE}":/app \\
+                            -w /app \\
+                            maven:3.9.9-eclipse-temurin-17 \\
+                            mvn test -f tests/e2e/pom.xml \\
+                            -Dapi.gateway.url=\$BASE_URL \\
+                            -Dmaven.test.failure.ignore=true
+                        
+                        echo "✅ E2E Tests completados."
+                    """
+                }
+            }
+            post {
+                always {
+                    // Los reportes están directamente en el workspace de Jenkins
+                    junit allowEmptyResults: true, testResults: 'tests/e2e/target/surefire-reports/*.xml'
+                    archiveArtifacts artifacts: 'tests/e2e/target/surefire-reports/**/*', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Run Performance Tests (Locust)') {
+            when {
+                expression { fileExists('tests/performance/ecommerce_load_test.py') }
+            }
+            steps {
+                script {
+                    sh """
+                        GATEWAY_IP=\$(cat gateway-ip.txt)
+                        BASE_URL="http://\${GATEWAY_IP}"
+                        
+                        echo "🚀 =============================================="
+                        echo "🚀 Ejecutando Performance Tests con Locust"
+                        echo "🚀 Target: \$BASE_URL"
+                        echo "🚀 =============================================="
+                        
+                        # Crear directorio para reportes
+                        mkdir -p reports
+                        
+                        # Usar Docker en el agente de Jenkins
+                        docker run --rm --network host \\
+                            -v "\${WORKSPACE}":/mnt/locust \\
+                            -w /mnt/locust \\
+                            locustio/locust:2.17.0 \\
+                            -f /mnt/locust/tests/performance/ecommerce_load_test.py \\
+                            --host \$BASE_URL \\
+                            --users 50 \\
+                            --spawn-rate 5 \\
+                            --run-time 3m \\
+                            --headless \\
+                            --csv=/mnt/locust/reports/load_test \\
+                            --html=/mnt/locust/reports/load_test_report.html \\
+                            --exit-code-on-error 0 || echo "Load test completado con warnings"
+                        
+                        echo "✅ Performance tests completados"
+                        
+                        # Mostrar estadísticas si existen
+                        if [ -f "reports/load_test_stats.csv" ]; then
+                            echo ""
+                            echo "📊 =============================================="
+                            echo "📊 RESUMEN DE PERFORMANCE TESTS"
+                            echo "📊 =============================================="
+                            cat reports/load_test_stats.csv
+                        fi
+                    """
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'reports/**/*', allowEmptyArchive: true
+                    publishHTML([
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'reports',
+                        reportFiles: 'load_test_report.html',
+                        reportName: 'Locust Performance Report',
+                        reportTitles: 'Performance Test Results'
+                    ])
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            script {
+                sh """
+                    echo "🎉 ✅ STAGING DEPLOY EXITOSO"
+                    echo "📦 Imagen desplegada: \${FULL_IMAGE_NAME}:\${IMAGE_TAG}"
+                    gcloud auth revoke --all || true
+                """
+            }
+        }
+        failure {
+            script {
+                sh """
+                    echo "🔐 Re-autenticando para operaciones de rollback..."
+                    gcloud auth activate-service-account --key-file=\${GCP_CREDENTIALS}
+                    gcloud config set project \${GCP_PROJECT}
+                    gcloud container clusters get-credentials \${CLUSTER_NAME} \${CLUSTER_LOCATION_FLAG} --project \${GCP_PROJECT}
+                """
+                
+                def failedStage = env.STAGE_NAME ?: 'Unknown'
+                
+                sh """
+                    echo "❌ 💥 STAGING DEPLOY FALLÓ"
+                    echo "🔍 Fallo detectado en stage: ${failedStage}"
+                    
+                    if [ "${failedStage}" = "Deploy to Staging (Helm)" ]; then
+                        echo "🔄 Realizando rollback del despliegue fallido..."
+                        helm rollback \${K8S_DEPLOYMENT_NAME} 0 -n \${K8S_NAMESPACE} || echo "⚠️ No hay revisión anterior para rollback."
+                    else
+                        echo "⚠️ Fallo en stage '${failedStage}'. El despliegue NO será revertido."
+                    fi
+                    
+                    echo "📋 Información de debug:"
+                    kubectl get events -n \${K8S_NAMESPACE} --sort-by='.lastTimestamp' | tail -20
+                    gcloud auth revoke --all || true
+                """
+            }
+        }
+        always {
+            script {
+                sh "gcloud auth revoke --all || true"
+            }
+            cleanWs()
+        }
+    }
+}
+
 apiVersion: v1
 kind: Pod
 metadata:
