@@ -140,12 +140,12 @@ pipeline {
                         echo "✅ Gateway ClusterIP: \$GATEWAY_IP"
                         echo "\$GATEWAY_IP" > gateway-ip.txt
                         
-                        # Asumimos que el proxy-client corre en el puerto 80 (o 8100, etc.)
-                        echo "🔍 Verificando conectividad al Gateway en http://\$GATEWAY_IP:8100/actuator/health"
+                        # El servicio proxy-client expone el puerto 80 (targetPort: 8900)
+                        echo "🔍 Verificando conectividad al Gateway en http://\$GATEWAY_IP:80/app/actuator/health"
                         kubectl run test-gateway-\${BUILD_NUMBER} --image=curlimages/curl:latest \
                             -n \${K8S_NAMESPACE} --rm -i --restart=Never --timeout=60s -- \
                             curl -f --retry 5 --retry-delay 5 --retry-connrefused \
-                            http://\$GATEWAY_IP:8100/actuator/health || {
+                            http://\$GATEWAY_IP:80/app/actuator/health || {
                                 echo "⚠️ No se pudo conectar al Gateway internamente"
                                 exit 1
                             }
@@ -164,9 +164,8 @@ pipeline {
                 script {
                     sh """
                         GATEWAY_IP=\$(cat gateway-ip.txt)
-                        # El proxy-client corre en 8100, pero el ClusterIP lo expone en 80
-                        # Revisa el puerto de tu servicio proxy-client. Usaré 8100 por ahora.
-                        BASE_URL="http://\${GATEWAY_IP}:8100" 
+                        # El servicio proxy-client expone el puerto 80 (targetPort: 8900 interno)
+                        BASE_URL="http://\${GATEWAY_IP}"
                         
                         echo "🧪 =============================================="
                         echo "🧪 Ejecutando E2E Tests contra: \$BASE_URL"
@@ -198,7 +197,8 @@ pipeline {
                 script {
                     sh """
                         GATEWAY_IP=\$(cat gateway-ip.txt)
-                        BASE_URL="http://\${GATEWAY_IP}:8100"
+                        # El servicio proxy-client expone el puerto 80
+                        BASE_URL="http://\${GATEWAY_IP}"
                         
                         echo "🚀 =============================================="
                         echo "🚀 Ejecutando Performance Tests con Locust"
