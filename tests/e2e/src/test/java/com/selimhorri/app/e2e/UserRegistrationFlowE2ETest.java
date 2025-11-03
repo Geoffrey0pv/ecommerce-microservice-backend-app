@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.*;
 import org.springframework.web.client.HttpClientErrorException;
@@ -21,7 +20,6 @@ import static org.assertj.core.api.Assertions.*;
  * E2E Test: User Registration and Authentication Flow
  * Tests complete user journey from registration to profile management
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @DisplayName("User Registration Flow E2E Tests")
 public class UserRegistrationFlowE2ETest {
     
@@ -67,7 +65,7 @@ public class UserRegistrationFlowE2ETest {
         HttpEntity<Map<String, Object>> registrationRequest = new HttpEntity<>(testUser, headers);
         
         ResponseEntity<String> registrationResponse = restTemplate.postForEntity(
-                apiGatewayUrl + "/user-service/api/users",
+                apiGatewayUrl + "/app/user-service/api/users",
                 registrationRequest,
                 String.class
         );
@@ -100,7 +98,7 @@ public class UserRegistrationFlowE2ETest {
         System.out.println("🔍 Step 2: User Retrieval Verification");
         
         ResponseEntity<String> getUserResponse = restTemplate.getForEntity(
-                apiGatewayUrl + "/user-service/api/users/" + userId,
+                apiGatewayUrl + "/app/user-service/api/users/" + userId,
                 String.class
         );
         
@@ -134,7 +132,7 @@ public class UserRegistrationFlowE2ETest {
         HttpEntity<Map<String, Object>> updateRequest = new HttpEntity<>(updateData, headers);
         
         ResponseEntity<String> updateResponse = restTemplate.exchange(
-                apiGatewayUrl + "/user-service/api/users",
+                apiGatewayUrl + "/app/user-service/api/users",
                 HttpMethod.PUT,
                 updateRequest,
                 String.class
@@ -148,7 +146,7 @@ public class UserRegistrationFlowE2ETest {
         System.out.println("🔍 Step 4: Update Verification");
         
         ResponseEntity<String> getUpdatedResponse = restTemplate.getForEntity(
-                apiGatewayUrl + "/user-service/api/users/" + userId,
+                apiGatewayUrl + "/app/user-service/api/users/" + userId,
                 String.class
         );
         
@@ -184,7 +182,7 @@ public class UserRegistrationFlowE2ETest {
         
         // First registration should succeed
         ResponseEntity<String> firstResponse = restTemplate.postForEntity(
-                apiGatewayUrl + "/user-service/api/users",
+                apiGatewayUrl + "/app/user-service/api/users",
                 request,
                 String.class
         );
@@ -198,7 +196,7 @@ public class UserRegistrationFlowE2ETest {
         // Second registration with same data should fail
         try {
             ResponseEntity<String> duplicateResponse = restTemplate.postForEntity(
-                    apiGatewayUrl + "/user-service/api/users",
+                    apiGatewayUrl + "/app/user-service/api/users",
                     request,
                     String.class
             );
@@ -236,7 +234,7 @@ public class UserRegistrationFlowE2ETest {
         
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(
-                    apiGatewayUrl + "/user-service/api/users",
+                    apiGatewayUrl + "/app/user-service/api/users",
                     invalidRequest,
                     String.class
             );
@@ -264,7 +262,7 @@ public class UserRegistrationFlowE2ETest {
         
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(
-                    apiGatewayUrl + "/user-service/api/users",
+                    apiGatewayUrl + "/app/user-service/api/users",
                     incompleteRequest,
                     String.class
             );

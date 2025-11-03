@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.*;
 import org.springframework.web.client.RestTemplate;
@@ -22,7 +21,6 @@ import static org.assertj.core.api.Assertions.*;
  * E2E Test: Complete eCommerce Shopping Flow
  * Tests end-to-end shopping experience: browse products → add to cart → checkout → order history
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @DisplayName("eCommerce Shopping Flow E2E Tests")
 public class ECommerceShoppingFlowE2ETest {
     
@@ -84,7 +82,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         HttpEntity<Map<String, Object>> userRequest = new HttpEntity<>(testUser, headers);
         ResponseEntity<String> userResponse = restTemplate.postForEntity(
-                apiGatewayUrl + "/user-service/api/users",
+                apiGatewayUrl + "/app/user-service/api/users",
                 userRequest,
                 String.class
         );
@@ -104,7 +102,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         HttpEntity<Map<String, Object>> productRequest = new HttpEntity<>(testProduct, headers);
         ResponseEntity<String> productResponse = restTemplate.postForEntity(
-                apiGatewayUrl + "/product-service/api/products",
+                apiGatewayUrl + "/app/product-service/api/products",
                 productRequest,
                 String.class
         );
@@ -121,7 +119,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         // Verify product can be retrieved (browse functionality)
         ResponseEntity<String> getProductResponse = restTemplate.getForEntity(
-                apiGatewayUrl + "/product-service/api/products/" + productId,
+                apiGatewayUrl + "/app/product-service/api/products/" + productId,
                 String.class
         );
         
@@ -142,7 +140,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         HttpEntity<Map<String, Object>> cartRequest = new HttpEntity<>(cartData, headers);
         ResponseEntity<String> cartResponse = restTemplate.postForEntity(
-                apiGatewayUrl + "/order-service/api/carts",
+                apiGatewayUrl + "/app/order-service/api/carts",
                 cartRequest,
                 String.class
         );
@@ -159,7 +157,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         // Verify cart can be retrieved
         ResponseEntity<String> getCartResponse = restTemplate.getForEntity(
-                apiGatewayUrl + "/order-service/api/carts/" + cartId,
+                apiGatewayUrl + "/app/order-service/api/carts/" + cartId,
                 String.class
         );
         
@@ -177,7 +175,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         HttpEntity<Map<String, Object>> orderRequest = new HttpEntity<>(orderData, headers);
         ResponseEntity<String> orderResponse = restTemplate.postForEntity(
-                apiGatewayUrl + "/order-service/api/orders",
+                apiGatewayUrl + "/app/order-service/api/orders",
                 orderRequest,
                 String.class
         );
@@ -196,7 +194,7 @@ public class ECommerceShoppingFlowE2ETest {
         System.out.println("🔍 Step 5: Order Details Verification");
         
         ResponseEntity<String> getOrderResponse = restTemplate.getForEntity(
-                apiGatewayUrl + "/order-service/api/orders/" + orderId,
+                apiGatewayUrl + "/app/order-service/api/orders/" + orderId,
                 String.class
         );
         
@@ -222,7 +220,7 @@ public class ECommerceShoppingFlowE2ETest {
         System.out.println("📋 Step 6: Order History Check");
         
         ResponseEntity<String> orderHistoryResponse = restTemplate.getForEntity(
-                apiGatewayUrl + "/order-service/api/orders",
+                apiGatewayUrl + "/app/order-service/api/orders",
                 String.class
         );
         
@@ -273,7 +271,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         HttpEntity<Map<String, Object>> productRequest = new HttpEntity<>(limitedProduct, headers);
         ResponseEntity<String> productResponse = restTemplate.postForEntity(
-                apiGatewayUrl + "/product-service/api/products",
+                apiGatewayUrl + "/app/product-service/api/products",
                 productRequest,
                 String.class
         );
@@ -285,7 +283,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         // Verify initial inventory
         ResponseEntity<String> getProductResponse = restTemplate.getForEntity(
-                apiGatewayUrl + "/product-service/api/products/" + productId,
+                apiGatewayUrl + "/app/product-service/api/products/" + productId,
                 String.class
         );
         
@@ -311,7 +309,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         HttpEntity<Map<String, Object>> updateRequest = new HttpEntity<>(updatedProduct, headers);
         ResponseEntity<String> updateResponse = restTemplate.exchange(
-                apiGatewayUrl + "/product-service/api/products",
+                apiGatewayUrl + "/app/product-service/api/products",
                 HttpMethod.PUT,
                 updateRequest,
                 String.class
@@ -321,7 +319,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         // Verify inventory was updated
         ResponseEntity<String> finalCheckResponse = restTemplate.getForEntity(
-                apiGatewayUrl + "/product-service/api/products/" + productId,
+                apiGatewayUrl + "/app/product-service/api/products/" + productId,
                 String.class
         );
         
@@ -347,7 +345,7 @@ public class ECommerceShoppingFlowE2ETest {
         // Create minimal setup for order
         HttpEntity<Map<String, Object>> userRequest = new HttpEntity<>(testUser, headers);
         ResponseEntity<String> userResponse = restTemplate.postForEntity(
-                apiGatewayUrl + "/user-service/api/users",
+                apiGatewayUrl + "/app/user-service/api/users",
                 userRequest,
                 String.class
         );
@@ -359,7 +357,7 @@ public class ECommerceShoppingFlowE2ETest {
         cartData.put("userId", userId);
         HttpEntity<Map<String, Object>> cartRequest = new HttpEntity<>(cartData, headers);
         ResponseEntity<String> cartResponse = restTemplate.postForEntity(
-                apiGatewayUrl + "/order-service/api/carts",
+                apiGatewayUrl + "/app/order-service/api/carts",
                 cartRequest,
                 String.class
         );
@@ -376,7 +374,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         HttpEntity<Map<String, Object>> orderRequest = new HttpEntity<>(orderData, headers);
         ResponseEntity<String> orderResponse = restTemplate.postForEntity(
-                apiGatewayUrl + "/order-service/api/orders",
+                apiGatewayUrl + "/app/order-service/api/orders",
                 orderRequest,
                 String.class
         );
@@ -394,7 +392,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         HttpEntity<Map<String, Object>> updateRequest = new HttpEntity<>(updatedOrder, headers);
         ResponseEntity<String> updateResponse = restTemplate.exchange(
-                apiGatewayUrl + "/order-service/api/orders",
+                apiGatewayUrl + "/app/order-service/api/orders",
                 HttpMethod.PUT,
                 updateRequest,
                 String.class
@@ -404,7 +402,7 @@ public class ECommerceShoppingFlowE2ETest {
         
         // Verify update
         ResponseEntity<String> finalOrderResponse = restTemplate.getForEntity(
-                apiGatewayUrl + "/order-service/api/orders/" + orderId,
+                apiGatewayUrl + "/app/order-service/api/orders/" + orderId,
                 String.class
         );
         assertThat(finalOrderResponse.getStatusCode()).isEqualTo(HttpStatus.OK);

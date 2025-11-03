@@ -53,7 +53,7 @@ public class PerformanceAndLoadE2ETest {
         
         // Test User Service response times
         List<Long> userServiceTimes = measureResponseTimes(
-                baseUrl + "/user-service/api/users", 
+                baseUrl + "/app/user-service/api/users", 
                 HttpMethod.GET, 
                 null, 
                 SAMPLE_SIZE
@@ -62,7 +62,7 @@ public class PerformanceAndLoadE2ETest {
 
         // Test Product Service response times
         List<Long> productServiceTimes = measureResponseTimes(
-                baseUrl + "/product-service/api/products", 
+                baseUrl + "/app/product-service/api/products", 
                 HttpMethod.GET, 
                 null, 
                 SAMPLE_SIZE
@@ -71,7 +71,7 @@ public class PerformanceAndLoadE2ETest {
 
         // Test Order Service response times
         List<Long> orderServiceTimes = measureResponseTimes(
-                baseUrl + "/order-service/api/orders", 
+                baseUrl + "/app/order-service/api/orders", 
                 HttpMethod.GET, 
                 null, 
                 SAMPLE_SIZE
@@ -157,7 +157,7 @@ public class PerformanceAndLoadE2ETest {
             
             try {
                 ResponseEntity<Map> response = restTemplate.postForEntity(
-                        baseUrl + "/user-service/api/users",
+                        baseUrl + "/app/user-service/api/users",
                         createJsonEntity(userRequest),
                         Map.class
                 );
@@ -202,7 +202,7 @@ public class PerformanceAndLoadE2ETest {
         // Create some base data first
         Map<String, Object> testUser = createUserRequest("StressTestUser");
         ResponseEntity<Map> userResponse = restTemplate.postForEntity(
-                baseUrl + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(testUser),
                 Map.class
         );
@@ -230,7 +230,7 @@ public class PerformanceAndLoadE2ETest {
             long readStart = System.currentTimeMillis();
             try {
                 ResponseEntity<Map> readResponse = restTemplate.getForEntity(
-                        baseUrl + "/user-service/api/users/" + userId,
+                        baseUrl + "/app/user-service/api/users/" + userId,
                         Map.class
                 );
                 
@@ -251,7 +251,7 @@ public class PerformanceAndLoadE2ETest {
                 cartRequest.put("userId", userId);
                 
                 ResponseEntity<Map> writeResponse = restTemplate.postForEntity(
-                        baseUrl + "/order-service/api/carts",
+                        baseUrl + "/app/order-service/api/carts",
                         createJsonEntity(cartRequest),
                         Map.class
                 );
@@ -429,7 +429,7 @@ public class PerformanceAndLoadE2ETest {
             try {
                 // Simulate user browsing products
                 ResponseEntity<List> productsResponse = restTemplate.getForEntity(
-                        baseUrl + "/product-service/api/products",
+                        baseUrl + "/app/product-service/api/products",
                         List.class
                 );
                 
@@ -473,7 +473,7 @@ public class PerformanceAndLoadE2ETest {
         while (System.currentTimeMillis() < endTime) {
             try {
                 ResponseEntity<List> response = restTemplate.getForEntity(
-                        baseUrl + "/user-service/api/users",
+                        baseUrl + "/app/user-service/api/users",
                         List.class
                 );
                 
@@ -502,7 +502,7 @@ public class PerformanceAndLoadE2ETest {
                 // CREATE
                 Map<String, Object> userRequest = createUserRequest("BenchUser" + i);
                 ResponseEntity<Map> createResponse = restTemplate.postForEntity(
-                        baseUrl + "/user-service/api/users",
+                        baseUrl + "/app/user-service/api/users",
                         createJsonEntity(userRequest),
                         Map.class
                 );
@@ -512,7 +512,7 @@ public class PerformanceAndLoadE2ETest {
                     
                     // READ
                     ResponseEntity<Map> readResponse = restTemplate.getForEntity(
-                            baseUrl + "/user-service/api/users/" + userId,
+                            baseUrl + "/app/user-service/api/users/" + userId,
                             Map.class
                     );
                     
@@ -543,7 +543,7 @@ public class PerformanceAndLoadE2ETest {
         for (int i = 0; i < OPERATIONS; i++) {
             try {
                 ResponseEntity<List> response = restTemplate.getForEntity(
-                        baseUrl + "/product-service/api/products",
+                        baseUrl + "/app/product-service/api/products",
                         List.class
                 );
                 
@@ -571,7 +571,7 @@ public class PerformanceAndLoadE2ETest {
         // Create a test user first
         Map<String, Object> userRequest = createUserRequest("OrderBenchUser");
         ResponseEntity<Map> userResponse = restTemplate.postForEntity(
-                baseUrl + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(userRequest),
                 Map.class
         );
@@ -592,7 +592,7 @@ public class PerformanceAndLoadE2ETest {
                 cartRequest.put("userId", userId);
                 
                 ResponseEntity<Map> cartResponse = restTemplate.postForEntity(
-                        baseUrl + "/order-service/api/carts",
+                        baseUrl + "/app/order-service/api/carts",
                         createJsonEntity(cartRequest),
                         Map.class
                 );
@@ -608,7 +608,7 @@ public class PerformanceAndLoadE2ETest {
                     orderRequest.put("cartId", cartId);
                     
                     ResponseEntity<Map> orderResponse = restTemplate.postForEntity(
-                            baseUrl + "/order-service/api/orders",
+                            baseUrl + "/app/order-service/api/orders",
                             createJsonEntity(orderRequest),
                             Map.class
                     );
