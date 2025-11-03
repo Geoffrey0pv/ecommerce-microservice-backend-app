@@ -184,7 +184,7 @@ spec:
   restartPolicy: Never
   containers:
   - name: maven-test
-    image: maven:3.8.6-openjdk-17-slim
+    image: maven:3.8.6-eclipse-temurin-17
     imagePullPolicy: IfNotPresent
     command: ["/bin/bash"]
     args:
