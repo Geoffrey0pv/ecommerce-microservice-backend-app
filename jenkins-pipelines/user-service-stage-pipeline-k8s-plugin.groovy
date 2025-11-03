@@ -278,7 +278,8 @@ spec:
                                 reportFiles: 'load_test_report.html',
                                 reportName: 'Locust Performance Report',
                                 keepAll: true,
-                                alwaysLinkToLastBuild: true
+                                alwaysLinkToLastBuild: true,
+                                allowMissing: true
                             ])
                             archiveArtifacts artifacts: 'performance-results/**/*', allowEmptyArchive: true
                         }
