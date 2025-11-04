@@ -214,18 +214,18 @@ EOF
                         
                         # Copiar el código al pod
                         echo "📦 Copiando código de tests al pod..."
-                        kubectl cp tests/e2e e2e-test-runner-\${BUILD_NUMBER}:/workspace/tests/ -n \${K8S_NAMESPACE}
+                        kubectl cp tests/e2e e2e-test-runner-\${BUILD_NUMBER}:/workspace/e2e -n \${K8S_NAMESPACE}
                         
                         # Ejecutar tests dentro del pod
                         echo "🧪 Ejecutando tests E2E con JWT..."
                         kubectl exec -n \${K8S_NAMESPACE} e2e-test-runner-\${BUILD_NUMBER} -- \
-                            mvn clean test -f /workspace/tests/e2e/pom.xml \
+                            mvn clean test -f /workspace/e2e/pom.xml \
                             -Dapi.gateway.url=\$BASE_URL \
                             -Dorg.slf4j.simpleLogger.log.org.springframework.web.client=DEBUG || TEST_FAILED=true
                         
                         # Copiar resultados de vuelta
                         echo "📋 Copiando resultados de tests..."
-                        kubectl cp e2e-test-runner-\${BUILD_NUMBER}:/workspace/tests/e2e/target tests/e2e/ -n \${K8S_NAMESPACE} || true
+                        kubectl cp e2e-test-runner-\${BUILD_NUMBER}:/workspace/e2e/target tests/e2e/ -n \${K8S_NAMESPACE} || true
                         
                         # Limpiar pod de tests
                         echo "🧹 Limpiando pod de tests..."
