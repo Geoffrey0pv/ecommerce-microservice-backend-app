@@ -81,6 +81,17 @@ pipeline {
                             --set env[5].value="false" \
                             --wait --timeout=5m
                         
+                        # CRITICAL: Deploy Gateway con profile E2E (sin JWT security)
+                        echo "🔓 Desplegando Gateway con profile 'e2e' (security disabled para tests)..."
+                        helm upgrade --install proxy-client manifests-gcp/proxy-client/ \
+                            --namespace \${K8S_NAMESPACE} \
+                            --set image.tag=\${IMAGE_TAG} \
+                            --set env[0].name="SPRING_PROFILES_ACTIVE" \
+                            --set env[0].value="e2e" \
+                            --set env[1].value="false" \
+                            --set env[2].value="false" \
+                            --wait --timeout=5m
+                        
                         echo "✅ Despliegue completado."
                     """
                 }
@@ -202,8 +213,15 @@ pipeline {
                         # Ejecuta maven dentro de un contenedor docker
                         # --network host: Permite al contenedor acceder a localhost del host
                         # -v \${WORKSPACE}:/app: Monta tu código en /app
+                        echo "🧪 Compilando tests E2E con dependencias JWT..."
                         docker run --rm --network host -v "\${WORKSPACE}":/app -w /app maven:3.9.9-eclipse-temurin-17 \
-                            mvn test -f tests/e2e/pom.xml -Dapi.gateway.url=\$BASE_URL
+                            mvn clean test -f tests/e2e/pom.xml \
+                            -Dapi.gateway.url=\$BASE_URL \
+                            -Dorg.slf4j.simpleLogger.log.org.springframework.web.client=DEBUG
+                        
+                        echo "📋 Verificando que JwtTestHelper fue compilado..."
+                        ls -la tests/e2e/target/test-classes/com/selimhorri/app/e2e/util/JwtTestHelper.class || \
+                            echo "⚠️ WARNING: JwtTestHelper.class no encontrado"
                         
                         echo "✅ E2E Tests completados."
                         
