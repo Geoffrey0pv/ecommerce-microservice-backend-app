@@ -2,7 +2,6 @@ package com.selimhorri.app.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.builders.AuthenticationManagerBuilder;
@@ -19,14 +18,8 @@ import com.selimhorri.app.config.filter.JwtRequestFilter;
 
 import lombok.RequiredArgsConstructor;
 
-/**
- * Security configuration with JWT authentication.
- * Active for all profiles EXCEPT staging (production, default, etc.)
- * For staging environment, NoSecurityConfig is used instead.
- */
 @Configuration
 @EnableWebSecurity
-@Profile("!staging")
 @RequiredArgsConstructor
 public class SecurityConfig extends WebSecurityConfigurerAdapter {
 	
@@ -47,27 +40,16 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 			.authorizeRequests()
 				.antMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 				.antMatchers("/", "index", "**/css/**", "**/js/**").permitAll()
-				// Authentication endpoints - permitAll
 				.antMatchers("/api/authenticate/**").permitAll()
-				.antMatchers("/app/api/authenticate/**").permitAll()
-				// Public read endpoints - permitAll
 				.antMatchers("/api/categories/**").permitAll()
-				.antMatchers("/app/product-service/api/categories/**").permitAll()
-				.antMatchers(HttpMethod.GET, "/api/products/**").permitAll()
-				.antMatchers(HttpMethod.GET, "/app/product-service/api/products/**").permitAll()
-				// User registration - permitAll (for E2E tests to create test users)
-				.antMatchers(HttpMethod.POST, "/api/users").permitAll()
-				.antMatchers(HttpMethod.POST, "/app/user-service/api/users").permitAll()
-				// Actuator health endpoints - permitAll
-				.antMatchers("/actuator/health/**", "/actuator/info/**").permitAll()
-				.antMatchers("/app/actuator/health/**", "/app/actuator/info/**").permitAll()
-				// Admin actuator endpoints - ROLE_ADMIN only
-				.antMatchers("/actuator/**", "/app/actuator/**")
-					.hasAnyRole(RoleBasedAuthority.ROLE_ADMIN.getRole())
-				// All other /api/** endpoints require authentication
-				.antMatchers("/api/**", "/app/*-service/api/**")
+				.antMatchers("/api/products/**").permitAll()
+				.antMatchers("/api/**")
 					.hasAnyRole(RoleBasedAuthority.ROLE_USER.getRole(), 
 							RoleBasedAuthority.ROLE_ADMIN.getRole())
+				.antMatchers("/actuator/health/**", "/actuator/info/**")
+					.permitAll()
+				.antMatchers("/actuator/**")
+					.hasAnyRole(RoleBasedAuthority.ROLE_ADMIN.getRole())
 				.anyRequest().authenticated()
 			.and()
 			.headers()
