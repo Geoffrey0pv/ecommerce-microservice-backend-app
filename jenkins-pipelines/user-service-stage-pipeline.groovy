@@ -81,13 +81,13 @@ pipeline {
                             --set env[5].value="false" \
                             --wait --timeout=5m
                         
-                        # CRITICAL: Deploy Gateway con profile E2E (sin JWT security)
-                        echo "🔓 Desplegando Gateway con profile 'e2e' (security disabled para tests)..."
+                        # CRITICAL: Deploy Gateway con profile STAGING (sin JWT security gracias a NoSecurityConfig)
+                        echo "🔓 Desplegando Gateway con profile 'staging' (security disabled para tests)..."
                         helm upgrade --install proxy-client manifests-gcp/proxy-client/ \
                             --namespace \${K8S_NAMESPACE} \
                             --set image.tag=\${IMAGE_TAG} \
                             --set env[0].name="SPRING_PROFILES_ACTIVE" \
-                            --set env[0].value="e2e" \
+                            --set env[0].value="staging" \
                             --set env[1].value="false" \
                             --set env[2].value="false" \
                             --wait --timeout=5m
