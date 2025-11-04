@@ -1,6 +1,7 @@
 package com.selimhorri.app.e2e;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.selimhorri.app.e2e.util.JwtTestHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
@@ -36,7 +37,17 @@ public class ErrorHandlingAndResilienceE2ETest {
         baseUrl = System.getProperty("api.gateway.url", "http://localhost:8100");
         System.out.println("🌐 Testing against Gateway: " + baseUrl);
     }
+    
+    private HttpHeaders createHeadersWithJwt() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String jwtToken = JwtTestHelper.generateToken("testuser");
+        headers.set("Authorization", "Bearer " + jwtToken);
+        return headers;
+    }
 
+
+    
     @Test
     @Order(1)
     void testInvalidDataHandling() {
@@ -121,6 +132,8 @@ public class ErrorHandlingAndResilienceE2ETest {
         System.out.println("✅ Incomplete product data properly rejected");
     }
 
+
+    
     @Test
     @Order(2)
     void testResourceNotFoundHandling() {
@@ -162,7 +175,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         assertThat(nonExistentOrder.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         System.out.println("✅ Non-existent order returns 404");
     }
-
+    
     @Test
     @Order(3)
     void testBusinessLogicValidation() {
@@ -245,6 +258,8 @@ public class ErrorHandlingAndResilienceE2ETest {
         }
     }
 
+
+    
     @Test
     @Order(4)
     void testConcurrentModificationHandling() {
@@ -310,6 +325,8 @@ public class ErrorHandlingAndResilienceE2ETest {
         System.out.println("✅ Concurrent modification handling tested");
     }
 
+
+    
     @Test
     @Order(5)
     void testSystemBoundariesAndLimits() {
@@ -392,6 +409,8 @@ public class ErrorHandlingAndResilienceE2ETest {
         }
     }
 
+
+    
     @Test
     @Order(6)
     void testTimeoutAndResponseTimeHandling() {
@@ -441,6 +460,8 @@ public class ErrorHandlingAndResilienceE2ETest {
         System.out.println("✅ Order list response time: " + responseTime + "ms");
     }
 
+
+    
     @Test
     @Order(7)
     void testErrorResponseFormats() {
@@ -512,8 +533,7 @@ public class ErrorHandlingAndResilienceE2ETest {
     private HttpEntity<String> createJsonEntity(Map<String, Object> body) {
         try {
             String json = objectMapper.writeValueAsString(body);
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpHeaders headers = createHeadersWithJwt();
             return new HttpEntity<>(json, headers);
         } catch (Exception e) {
             throw new RuntimeException("Failed to create JSON entity", e);

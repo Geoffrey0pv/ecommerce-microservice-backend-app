@@ -1,6 +1,7 @@
 package com.selimhorri.app.e2e;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.selimhorri.app.e2e.util.JwtTestHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
@@ -43,7 +44,17 @@ public class PerformanceAndLoadE2ETest {
         performanceMetrics.clear();
         errorCounts.clear();
     }
+    
+    private HttpHeaders createHeadersWithJwt() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String jwtToken = JwtTestHelper.generateToken("testuser");
+        headers.set("Authorization", "Bearer " + jwtToken);
+        return headers;
+    }
 
+
+    
     @Test
     @Order(1)
     void testBasicResponseTimeMetrics() {
@@ -94,6 +105,8 @@ public class PerformanceAndLoadE2ETest {
         System.out.println("✅ All services respond within acceptable time limits");
     }
 
+
+    
     @Test
     @Order(2)
     void testConcurrentUserLoad() {
@@ -136,6 +149,8 @@ public class PerformanceAndLoadE2ETest {
         System.out.println("✅ Concurrent load test completed");
     }
 
+
+    
     @Test
     @Order(3)
     void testHighVolumeDataCreation() {
@@ -192,6 +207,8 @@ public class PerformanceAndLoadE2ETest {
         System.out.println("✅ High volume creation test passed");
     }
 
+
+    
     @Test
     @Order(4)
     void testDatabaseStressTest() {
@@ -285,6 +302,8 @@ public class PerformanceAndLoadE2ETest {
         System.out.println("✅ Database stress test completed");
     }
 
+
+    
     @Test
     @Order(5)
     void testSystemThroughputMeasurement() {
@@ -346,6 +365,8 @@ public class PerformanceAndLoadE2ETest {
         System.out.println("✅ Throughput test completed");
     }
 
+
+    
     @Test
     @Order(6)
     void testPerformanceBenchmarks() {
@@ -680,8 +701,7 @@ public class PerformanceAndLoadE2ETest {
     private HttpEntity<String> createJsonEntity(Map<String, Object> body) {
         try {
             String json = objectMapper.writeValueAsString(body);
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpHeaders headers = createHeadersWithJwt();
             return new HttpEntity<>(json, headers);
         } catch (Exception e) {
             throw new RuntimeException("Failed to create JSON entity", e);

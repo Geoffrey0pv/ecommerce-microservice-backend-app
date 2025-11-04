@@ -1,6 +1,7 @@
 package com.selimhorri.app.e2e;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.selimhorri.app.e2e.util.JwtTestHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
@@ -42,6 +43,14 @@ public class MultiServiceIntegrationE2ETest {
         baseUrl = System.getProperty("api.gateway.url", "http://localhost:8100");
         
         System.out.println("🌐 Testing against Gateway: " + baseUrl);
+    }
+    
+    private HttpHeaders createHeadersWithJwt() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String jwtToken = JwtTestHelper.generateToken("testuser");
+        headers.set("Authorization", "Bearer " + jwtToken);
+        return headers;
     }
 
     @Test
@@ -486,9 +495,18 @@ public class MultiServiceIntegrationE2ETest {
             String json = objectMapper.writeValueAsString(body);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
+            String jwtToken = JwtTestHelper.generateToken("testuser");
+            headers.set("Authorization", "Bearer " + jwtToken);
             return new HttpEntity<>(json, headers);
         } catch (Exception e) {
             throw new RuntimeException("Failed to create JSON entity", e);
         }
+    }
+    
+    private HttpEntity<Void> createAuthHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        String jwtToken = JwtTestHelper.generateToken("testuser");
+        headers.set("Authorization", "Bearer " + jwtToken);
+        return new HttpEntity<>(headers);
     }
 }

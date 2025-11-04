@@ -2,6 +2,7 @@ package com.selimhorri.app.e2e;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.selimhorri.app.e2e.util.JwtTestHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -69,13 +70,20 @@ public class ECommerceShoppingFlowE2ETest {
         testProduct.put("productBrand", "E2ETestBrand");
     }
     
+    private HttpHeaders createHeadersWithJwt() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String jwtToken = JwtTestHelper.generateToken("testuser");
+        headers.set("Authorization", "Bearer " + jwtToken);
+        return headers;
+    }
+    
     @Test
     @DisplayName("Complete Shopping Journey")
     void testCompleteShoppingJourney() {
         System.out.println("🛒 Starting Complete Shopping Journey Test");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = createHeadersWithJwt();
         
         
         // STEP 1: User Registration
@@ -257,8 +265,7 @@ public class ECommerceShoppingFlowE2ETest {
     void testProductInventoryManagement() {
         System.out.println("📊 Testing Product Inventory Management");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = createHeadersWithJwt();
         
         
         // Create product with limited inventory
@@ -341,8 +348,7 @@ public class ECommerceShoppingFlowE2ETest {
     void testOrderUpdateWorkflow() {
         System.out.println("📝 Testing Order Update Workflow");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = createHeadersWithJwt();
         
         
         // Create minimal setup for order

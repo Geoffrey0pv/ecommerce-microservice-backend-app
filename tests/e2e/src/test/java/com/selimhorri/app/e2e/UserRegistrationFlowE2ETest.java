@@ -2,6 +2,7 @@ package com.selimhorri.app.e2e;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.selimhorri.app.e2e.util.JwtTestHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,14 @@ public class UserRegistrationFlowE2ETest {
         testUser.put("credentialType", "EMAIL");
     }
     
+    private HttpHeaders createHeadersWithJwt() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String jwtToken = JwtTestHelper.generateToken("testuser");
+        headers.set("Authorization", "Bearer " + jwtToken);
+        return headers;
+    }
+    
     @Test
     @DisplayName("Complete User Registration Flow")
     void testCompleteUserRegistrationFlow() {
@@ -60,8 +69,7 @@ public class UserRegistrationFlowE2ETest {
         // STEP 1: Register new user
         System.out.println("📝 Step 1: User Registration");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = createHeadersWithJwt();
         
         HttpEntity<Map<String, Object>> registrationRequest = new HttpEntity<>(testUser, headers);
         
@@ -177,8 +185,7 @@ public class UserRegistrationFlowE2ETest {
     void testDuplicateUserRegistrationPrevention() {
         System.out.println("🛡️ Testing Duplicate Registration Prevention");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = createHeadersWithJwt();
         
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(testUser, headers);
         
@@ -225,8 +232,7 @@ public class UserRegistrationFlowE2ETest {
     void testUserDataValidation() {
         System.out.println("✅ Testing User Data Validation");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = createHeadersWithJwt();
         
         
         // Test with invalid email
