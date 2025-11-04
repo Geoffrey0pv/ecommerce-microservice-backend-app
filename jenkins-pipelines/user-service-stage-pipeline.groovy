@@ -102,7 +102,6 @@ pipeline {
                             -l app=\${K8S_DEPLOYMENT_NAME} \
                             -o jsonpath='{.items[0].metadata.name}')
                         
-                        # 1. ¡CORRECCIÓN IMPORTANTE! Usando el puerto 8200
                         echo "🎯 Testing pod: \$POD_NAME en puerto \${SERVICE_PORT}"
                         
                         kubectl exec \$POD_NAME -n \${K8S_NAMESPACE} -- \
@@ -162,69 +161,87 @@ pipeline {
             steps {
                 script {
                     sh """
-                        set +e  # No fallar si el port-forward ya existe
-                        
                         echo "🌐 =============================================="
-                        echo "🌐 Configurando Port-Forward al Gateway"
+                        echo "🌐 Obteniendo IP del Gateway en el cluster"
                         echo "🌐 =============================================="
                         
-                        # Matar cualquier port-forward existente en el puerto 8100
-                        pkill -f "kubectl port-forward.*proxy-client.*8100" || true
+                        # Obtener la IP del servicio proxy-client directamente en el cluster
+                        GATEWAY_IP=\$(kubectl get svc \${API_GATEWAY_SERVICE_NAME} -n \${K8S_NAMESPACE} -o jsonpath='{.spec.clusterIP}')
+                        GATEWAY_PORT=80  # Puerto del servicio
                         
-                        # Iniciar port-forward en segundo plano
-                        kubectl port-forward svc/\${API_GATEWAY_SERVICE_NAME} 8100:80 -n \${K8S_NAMESPACE} > /dev/null 2>&1 &
-                        PORT_FORWARD_PID=\$!
-                        echo "Port-forward PID: \$PORT_FORWARD_PID"
+                        echo "Gateway ClusterIP: \$GATEWAY_IP"
+                        echo "Gateway Port: \$GATEWAY_PORT"
                         
-                        # Esperar a que el port-forward esté listo
-                        echo "Esperando a que el port-forward esté activo..."
-                        for i in {1..30}; do
-                            if curl -s http://localhost:8100/app/actuator/health > /dev/null 2>&1; then
-                                echo "✅ Port-forward activo!"
-                                break
-                            fi
-                            if [ \$i -eq 30 ]; then
-                                echo "❌ Port-forward no se pudo establecer"
-                                kill \$PORT_FORWARD_PID 2>/dev/null || true
+                        # Verificar que el Gateway está respondiendo
+                        echo "🔍 Verificando conectividad con el Gateway..."
+                        kubectl run test-gateway-connection --image=curlimages/curl:latest --rm -i --restart=Never -n \${K8S_NAMESPACE} -- \
+                            curl -s -o /dev/null -w "%{http_code}" http://\$GATEWAY_IP:\$GATEWAY_PORT/app/actuator/health || {
+                                echo "❌ Gateway no responde. Abortando tests."
                                 exit 1
-                            fi
-                            sleep 1
-                        done
+                            }
                         
-                        set -e  # Volver a modo estricto
+                        echo "✅ Gateway respondiendo correctamente"
                         
-                        BASE_URL="http://localhost:8100"
+                        # URL base para los tests (accesible desde pods en el cluster)
+                        BASE_URL="http://\$GATEWAY_IP:\$GATEWAY_PORT"
                         
                         echo "🧪 =============================================="
                         echo "🧪 Ejecutando E2E Tests contra: \$BASE_URL"
                         echo "🧪 =============================================="
                         
-                        # Ejecuta maven dentro de un contenedor docker
-                        # --network host: Permite al contenedor acceder a localhost del host
-                        # -v \${WORKSPACE}:/app: Monta tu código en /app
-                        echo "🧪 Compilando tests E2E con dependencias JWT..."
-                        docker run --rm --network host -v "\${WORKSPACE}":/app -w /app maven:3.9.9-eclipse-temurin-17 \
-                            mvn clean test -f tests/e2e/pom.xml \
+                        # Ejecutar tests E2E dentro de un pod en el cluster (con acceso a la red del cluster)
+                        echo "🧪 Desplegando pod de tests E2E en el cluster..."
+                        
+                        cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: e2e-test-runner-\${BUILD_NUMBER}
+  namespace: \${K8S_NAMESPACE}
+spec:
+  restartPolicy: Never
+  containers:
+  - name: maven-tests
+    image: maven:3.9.9-eclipse-temurin-17
+    command: ["sleep"]
+    args: ["3600"]
+    workingDir: /workspace
+EOF
+
+                        # Esperar a que el pod esté listo
+                        echo "⏳ Esperando a que el pod de tests esté listo..."
+                        kubectl wait --for=condition=ready pod/e2e-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} --timeout=120s
+                        
+                        # Copiar el código al pod
+                        echo "📦 Copiando código de tests al pod..."
+                        kubectl cp tests/e2e e2e-test-runner-\${BUILD_NUMBER}:/workspace/tests/ -n \${K8S_NAMESPACE}
+                        
+                        # Ejecutar tests dentro del pod
+                        echo "🧪 Ejecutando tests E2E con JWT..."
+                        kubectl exec -n \${K8S_NAMESPACE} e2e-test-runner-\${BUILD_NUMBER} -- \
+                            mvn clean test -f /workspace/tests/e2e/pom.xml \
                             -Dapi.gateway.url=\$BASE_URL \
-                            -Dorg.slf4j.simpleLogger.log.org.springframework.web.client=DEBUG
+                            -Dorg.slf4j.simpleLogger.log.org.springframework.web.client=DEBUG || TEST_FAILED=true
                         
-                        echo "📋 Verificando que JwtTestHelper fue compilado..."
-                        ls -la tests/e2e/target/test-classes/com/selimhorri/app/e2e/util/JwtTestHelper.class || \
-                            echo "⚠️ WARNING: JwtTestHelper.class no encontrado"
+                        # Copiar resultados de vuelta
+                        echo "📋 Copiando resultados de tests..."
+                        kubectl cp e2e-test-runner-\${BUILD_NUMBER}:/workspace/tests/e2e/target tests/e2e/ -n \${K8S_NAMESPACE} || true
                         
-                        echo "✅ E2E Tests completados."
+                        # Limpiar pod de tests
+                        echo "🧹 Limpiando pod de tests..."
+                        kubectl delete pod e2e-test-runner-\${BUILD_NUMBER} -n \${K8S_NAMESPACE} || true
                         
-                        # Limpiar port-forward
-                        echo "🧹 Limpiando port-forward..."
-                        kill \$PORT_FORWARD_PID 2>/dev/null || true
+                        if [ "\$TEST_FAILED" = "true" ]; then
+                            echo "❌ Tests E2E fallaron"
+                            exit 1
+                        fi
+                        
+                        echo "✅ E2E Tests completados exitosamente."
                     """
                 }
             }
             post {
                 always {
-                    script {
-                        sh "pkill -f 'kubectl port-forward.*proxy-client.*8100' || true"
-                    }
                     junit allowEmptyResults: true, testResults: 'tests/e2e/target/surefire-reports/*.xml'
                     archiveArtifacts artifacts: 'tests/e2e/target/surefire-reports/**/*', allowEmptyArchive: true
                 }
