@@ -1,16 +1,14 @@
 package com.selimhorri.app.e2e;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.selimhorri.app.e2e.util.JwtTestHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
 import org.junit.jupiter.api.Order;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.*;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.web.client.ResourceAccessException;
 
 import java.time.LocalDateTime;
@@ -24,29 +22,32 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * E2E Test: Error Handling and System Resilience
  * Tests system behavior under error conditions and validates proper error handling
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@TestPropertySource(properties = {
-        "spring.cloud.config.enabled=false",
-        "eureka.client.enabled=false"
-})
 @TestMethodOrder(OrderAnnotation.class)
 public class ErrorHandlingAndResilienceE2ETest {
-
-    @LocalServerPort
-    private int port;
 
     private TestRestTemplate restTemplate;
     private ObjectMapper objectMapper;
     private String baseUrl;
-    private final String API_GATEWAY_URL = "http://localhost:8100";
 
     @BeforeEach
     void setUp() {
         restTemplate = new TestRestTemplate();
         objectMapper = new ObjectMapper();
-        baseUrl = "http://localhost:" + port;
+        // Read from system property passed by Maven: -Dapi.gateway.url=http://10.22.10.27
+        baseUrl = System.getProperty("api.gateway.url", "http://localhost:8100");
+        System.out.println("🌐 Testing against Gateway: " + baseUrl);
+    }
+    
+    private HttpHeaders createHeadersWithJwt() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String jwtToken = JwtTestHelper.generateToken("testuser");
+        headers.set("Authorization", "Bearer " + jwtToken);
+        return headers;
     }
 
+
+    
     @Test
     @Order(1)
     void testInvalidDataHandling() {
@@ -62,7 +63,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         emptyUser.put("email", "");
 
         ResponseEntity<Map> emptyUserResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(emptyUser),
                 Map.class
         );
@@ -81,7 +82,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         invalidEmailUser.put("password", "password123");
 
         ResponseEntity<Map> invalidEmailResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(invalidEmailUser),
                 Map.class
         );
@@ -103,7 +104,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         negativePhiceProduct.put("categoryId", 1);
 
         ResponseEntity<Map> negativePriceResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/product-service/api/products",
+                baseUrl + "/app/product-service/api/products",
                 createJsonEntity(negativePhiceProduct),
                 Map.class
         );
@@ -120,7 +121,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         incompleteProduct.put("productTitle", ""); // Empty title
         
         ResponseEntity<Map> incompleteProductResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/product-service/api/products",
+                baseUrl + "/app/product-service/api/products",
                 createJsonEntity(incompleteProduct),
                 Map.class
         );
@@ -131,6 +132,8 @@ public class ErrorHandlingAndResilienceE2ETest {
         System.out.println("✅ Incomplete product data properly rejected");
     }
 
+
+    
     @Test
     @Order(2)
     void testResourceNotFoundHandling() {
@@ -138,7 +141,7 @@ public class ErrorHandlingAndResilienceE2ETest {
 
         // Test non-existent user
         ResponseEntity<Map> nonExistentUser = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/user-service/api/users/999999",
+                baseUrl + "/app/user-service/api/users/999999",
                 Map.class
         );
 
@@ -147,7 +150,7 @@ public class ErrorHandlingAndResilienceE2ETest {
 
         // Test non-existent product
         ResponseEntity<Map> nonExistentProduct = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/product-service/api/products/999999",
+                baseUrl + "/app/product-service/api/products/999999",
                 Map.class
         );
 
@@ -156,7 +159,7 @@ public class ErrorHandlingAndResilienceE2ETest {
 
         // Test non-existent cart
         ResponseEntity<Map> nonExistentCart = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/order-service/api/carts/999999",
+                baseUrl + "/app/order-service/api/carts/999999",
                 Map.class
         );
 
@@ -165,14 +168,14 @@ public class ErrorHandlingAndResilienceE2ETest {
 
         // Test non-existent order
         ResponseEntity<Map> nonExistentOrder = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/order-service/api/orders/999999",
+                baseUrl + "/app/order-service/api/orders/999999",
                 Map.class
         );
 
         assertThat(nonExistentOrder.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         System.out.println("✅ Non-existent order returns 404");
     }
-
+    
     @Test
     @Order(3)
     void testBusinessLogicValidation() {
@@ -181,7 +184,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         // Create valid test user first
         Map<String, Object> validUser = createValidUserRequest("BusinessLogicUser");
         ResponseEntity<Map> userResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(validUser),
                 Map.class
         );
@@ -197,7 +200,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         orderWithoutCart.put("cartId", 999999); // Non-existent cart
 
         ResponseEntity<Map> invalidOrderResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/order-service/api/orders",
+                baseUrl + "/app/order-service/api/orders",
                 createJsonEntity(orderWithoutCart),
                 Map.class
         );
@@ -209,7 +212,7 @@ public class ErrorHandlingAndResilienceE2ETest {
 
         // Test 2: Duplicate user registration (business rule)
         ResponseEntity<Map> duplicateUserResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(validUser), // Same user data
                 Map.class
         );
@@ -226,7 +229,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         cartRequest.put("userId", userId);
 
         ResponseEntity<Map> cartResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/order-service/api/carts",
+                baseUrl + "/app/order-service/api/carts",
                 createJsonEntity(cartRequest),
                 Map.class
         );
@@ -242,7 +245,7 @@ public class ErrorHandlingAndResilienceE2ETest {
             negativeOrder.put("cartId", cartId);
 
             ResponseEntity<Map> negativeOrderResponse = restTemplate.postForEntity(
-                    API_GATEWAY_URL + "/order-service/api/orders",
+                    baseUrl + "/app/order-service/api/orders",
                     createJsonEntity(negativeOrder),
                     Map.class
             );
@@ -255,6 +258,8 @@ public class ErrorHandlingAndResilienceE2ETest {
         }
     }
 
+
+    
     @Test
     @Order(4)
     void testConcurrentModificationHandling() {
@@ -263,7 +268,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         // Create test data
         Map<String, Object> userRequest = createValidUserRequest("ConcurrentUser");
         ResponseEntity<Map> userResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(userRequest),
                 Map.class
         );
@@ -274,7 +279,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         // Create product for concurrent modification
         Map<String, Object> productRequest = createValidProductRequest("ConcurrentProduct");
         ResponseEntity<Map> productResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/product-service/api/products",
+                baseUrl + "/app/product-service/api/products",
                 createJsonEntity(productRequest),
                 Map.class
         );
@@ -299,14 +304,14 @@ public class ErrorHandlingAndResilienceE2ETest {
 
         // Execute concurrent updates
         ResponseEntity<Map> update1 = restTemplate.exchange(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 HttpMethod.PUT,
                 createJsonEntity(updateRequest1),
                 Map.class
         );
 
         ResponseEntity<Map> update2 = restTemplate.exchange(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 HttpMethod.PUT,
                 createJsonEntity(updateRequest2),
                 Map.class
@@ -320,6 +325,8 @@ public class ErrorHandlingAndResilienceE2ETest {
         System.out.println("✅ Concurrent modification handling tested");
     }
 
+
+    
     @Test
     @Order(5)
     void testSystemBoundariesAndLimits() {
@@ -334,7 +341,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         longStringUser.put("password", "password123");
 
         ResponseEntity<Map> longStringResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(longStringUser),
                 Map.class
         );
@@ -354,7 +361,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         extremeProduct.put("categoryId", 1);
 
         ResponseEntity<Map> extremeProductResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/product-service/api/products",
+                baseUrl + "/app/product-service/api/products",
                 createJsonEntity(extremeProduct),
                 Map.class
         );
@@ -374,7 +381,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         maliciousUser.put("password", "password123");
 
         ResponseEntity<Map> maliciousResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(maliciousUser),
                 Map.class
         );
@@ -388,7 +395,7 @@ public class ErrorHandlingAndResilienceE2ETest {
             // If accepted, verify data was sanitized
             Integer userId = (Integer) maliciousResponse.getBody().get("userId");
             ResponseEntity<Map> retrievedUser = restTemplate.getForEntity(
-                    API_GATEWAY_URL + "/user-service/api/users/" + userId,
+                    baseUrl + "/app/user-service/api/users/" + userId,
                     Map.class
             );
 
@@ -402,6 +409,8 @@ public class ErrorHandlingAndResilienceE2ETest {
         }
     }
 
+
+    
     @Test
     @Order(6)
     void testTimeoutAndResponseTimeHandling() {
@@ -411,7 +420,7 @@ public class ErrorHandlingAndResilienceE2ETest {
 
         // Test basic response times
         ResponseEntity<List> usersResponse = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 List.class
         );
 
@@ -425,7 +434,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         // Test product list response time
         startTime = System.currentTimeMillis();
         ResponseEntity<List> productsResponse = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/product-service/api/products",
+                baseUrl + "/app/product-service/api/products",
                 List.class
         );
 
@@ -439,7 +448,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         // Test order list response time
         startTime = System.currentTimeMillis();
         ResponseEntity<List> ordersResponse = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/order-service/api/orders",
+                baseUrl + "/app/order-service/api/orders",
                 List.class
         );
 
@@ -451,6 +460,8 @@ public class ErrorHandlingAndResilienceE2ETest {
         System.out.println("✅ Order list response time: " + responseTime + "ms");
     }
 
+
+    
     @Test
     @Order(7)
     void testErrorResponseFormats() {
@@ -458,7 +469,7 @@ public class ErrorHandlingAndResilienceE2ETest {
 
         // Test error response structure for 404
         ResponseEntity<Map> notFoundResponse = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/user-service/api/users/999999",
+                baseUrl + "/app/user-service/api/users/999999",
                 Map.class
         );
 
@@ -474,7 +485,7 @@ public class ErrorHandlingAndResilienceE2ETest {
         invalidData.put("invalid", "data");
 
         ResponseEntity<Map> badRequestResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(invalidData),
                 Map.class
         );
@@ -521,9 +532,8 @@ public class ErrorHandlingAndResilienceE2ETest {
 
     private HttpEntity<String> createJsonEntity(Map<String, Object> body) {
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
             String json = objectMapper.writeValueAsString(body);
+            HttpHeaders headers = createHeadersWithJwt();
             return new HttpEntity<>(json, headers);
         } catch (Exception e) {
             throw new RuntimeException("Failed to create JSON entity", e);

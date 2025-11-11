@@ -1,4 +1,3 @@
-// jenkins-pipelines/user-service-dev-pipeline.groovy
 pipeline {
     agent any
     environment {
@@ -15,7 +14,6 @@ pipeline {
             steps {
                 checkout scm
                 script {
-                    // Guarda el Git Commit SHA para usarlo como tag inmutable
                     env.GIT_COMMIT_SHA = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                     env.FULL_IMAGE_NAME = "${GCR_REGISTRY}/${IMAGE_NAME}"
                     env.IMAGE_TAG = "${env.GIT_COMMIT_SHA}"

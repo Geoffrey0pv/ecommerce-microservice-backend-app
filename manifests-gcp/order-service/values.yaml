@@ -1,34 +1,61 @@
+# manifests-gcp/order-service/values.yaml
 fullnameOverride: order-service
 
 replicaCount: 1
 
 image:
-  repository: order-service
-  tag: dev
+  repository: us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices/order-service
+  tag: latest-dev
   pullPolicy: IfNotPresent
 
 service:
-  type: ClusterIP
+  type: NodePort
   port: 8300
+  targetPort: 8300
 
 readinessProbe:
   path: /order-service/actuator/health
   port: 8300
-  initialDelaySeconds: 10
-  periodSeconds: 30
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+livenessProbe:
+  path: /order-service/actuator/health
+  port: 8300
+  initialDelaySeconds: 90
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
 
 env:
   - name: SPRING_PROFILES_ACTIVE
-    value: dev
+    value: "dev"
   - name: SPRING_ZIPKIN_BASE_URL
-    value: http://zipkin:9411/
+    value: "http://zipkin:9411/"
   - name: eureka.client.service-url.defaultZone
-    value: http://discovery:8761/eureka
+    value: "http://discovery:8761/eureka"
   - name: EUREKA_INSTANCE_HOSTNAME
-    value: order-service
+    value: "order-service"
   - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
-    value: "true"
+    value: "false"
   - name: EUREKA_CLIENT_FETCH_REGISTRY
-    value: "true"
+    value: "false"
   - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
     value: "false"
+  - name: EUREKA_CLIENT_ENABLED
+    value: "false"
+  - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+    value: "health,info,metrics"
+ingress:
+  enabled: true
+  className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: "gce"
+  hosts:
+    - host: ""
+      paths:
+        - path: /order-service
+          pathType: Prefix
+  tls: []

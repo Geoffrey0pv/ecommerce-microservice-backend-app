@@ -1,0 +1,75 @@
+[[1;34mINFO[m] Scanning for projects...
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m---------------< [0;36mcom.selimhorri.app:ecommerce-e2e-tests[0;1m >---------------[m
+[[1;34mINFO[m] [1mBuilding eCommerce E2E Tests v0.1.0[m
+[[1;34mINFO[m] [1m--------------------------------[ jar ]---------------------------------[m
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-clean-plugin:2.5:clean[m [1m(default-clean)[m @ [36mecommerce-e2e-tests[0;1m ---[m
+[[1;34mINFO[m] Deleting /home/geoffrey0pv/Projects/2025-2/Ingeosft5/ecommerce-microservice-backend-app/tests/e2e/target
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:2.6:resources[m [1m(default-resources)[m @ [36mecommerce-e2e-tests[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/geoffrey0pv/Projects/2025-2/Ingeosft5/ecommerce-microservice-backend-app/tests/e2e/src/main/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.1:compile[m [1m(default-compile)[m @ [36mecommerce-e2e-tests[0;1m ---[m
+[[1;34mINFO[m] No sources to compile
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-resources-plugin:2.6:testResources[m [1m(default-testResources)[m @ [36mecommerce-e2e-tests[0;1m ---[m
+[[1;34mINFO[m] Using 'UTF-8' encoding to copy filtered resources.
+[[1;34mINFO[m] skip non existing resourceDirectory /home/geoffrey0pv/Projects/2025-2/Ingeosft5/ecommerce-microservice-backend-app/tests/e2e/src/test/resources
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-compiler-plugin:3.8.1:testCompile[m [1m(default-testCompile)[m @ [36mecommerce-e2e-tests[0;1m ---[m
+[[1;34mINFO[m] Changes detected - recompiling the module!
+[[1;34mINFO[m] Compiling 6 source files to /home/geoffrey0pv/Projects/2025-2/Ingeosft5/ecommerce-microservice-backend-app/tests/e2e/target/test-classes
+[[1;34mINFO[m] /home/geoffrey0pv/Projects/2025-2/Ingeosft5/ecommerce-microservice-backend-app/tests/e2e/src/test/java/com/selimhorri/app/e2e/MultiServiceIntegrationE2ETest.java: /home/geoffrey0pv/Projects/2025-2/Ingeosft5/ecommerce-microservice-backend-app/tests/e2e/src/test/java/com/selimhorri/app/e2e/MultiServiceIntegrationE2ETest.java uses unchecked or unsafe operations.
+[[1;34mINFO[m] /home/geoffrey0pv/Projects/2025-2/Ingeosft5/ecommerce-microservice-backend-app/tests/e2e/src/test/java/com/selimhorri/app/e2e/MultiServiceIntegrationE2ETest.java: Recompile with -Xlint:unchecked for details.
+[[1;34mINFO[m] 
+[[1;34mINFO[m] [1m--- [0;32mmaven-surefire-plugin:3.0.0-M7:test[m [1m(default-test)[m @ [36mecommerce-e2e-tests[0;1m ---[m
+[[1;34mINFO[m] Using auto detected provider org.apache.maven.surefire.junitplatform.JUnitPlatformProvider
+[[1;34mINFO[m] 
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m]  T E S T S
+[[1;34mINFO[m] -------------------------------------------------------
+[[1;34mINFO[m] Running com.selimhorri.app.e2e.[1mMultiServiceIntegrationE2ETest[m
+🌐 Testing against Gateway: http://10.22.10.27
+🚀 Starting Complete System Integration Test
+📝 Phase 1: Multi-User Creation
+21:21:00.609 [main] DEBUG org.springframework.web.client.RestTemplate - HTTP POST http://10.22.10.27/app/user-service/api/users
+21:21:00.622 [main] DEBUG org.springframework.web.client.RestTemplate - Accept=[application/json, application/*+json]
+21:21:00.628 [main] DEBUG org.springframework.web.client.RestTemplate - Writing [{"credentialType":"EMAIL","firstName":"MultiUser0fc4ff8bb","lastName":"TestUser","password":"MultiTest123!","phone":"+1555f940ae7","imageUrl":"https://example.com/multi.jpg","email":"multiuser0fc4ff8bbf940ae79@multitest.com","username":"multiuser0fc4ff8bbf940ae79"}] as "application/json"
+🌐 Testing against Gateway: http://10.22.10.27
+⚡ Testing Concurrent Multi-Service Operations
+21:23:16.879 [pool-2-thread-1] DEBUG org.springframework.web.client.RestTemplate - HTTP POST http://10.22.10.27/app/user-service/api/users
+21:23:16.879 [pool-2-thread-3] DEBUG org.springframework.web.client.RestTemplate - HTTP POST http://10.22.10.27/app/user-service/api/users
+21:23:16.879 [pool-2-thread-2] DEBUG org.springframework.web.client.RestTemplate - HTTP POST http://10.22.10.27/app/user-service/api/users
+21:23:16.880 [pool-2-thread-3] DEBUG org.springframework.web.client.RestTemplate - Accept=[application/json, application/*+json]
+21:23:16.880 [pool-2-thread-1] DEBUG org.springframework.web.client.RestTemplate - Accept=[application/json, application/*+json]
+21:23:16.881 [pool-2-thread-1] DEBUG org.springframework.web.client.RestTemplate - Writing [{"credentialType":"EMAIL","firstName":"ConcurrentUser0","lastName":"TestUser","password":"MultiTest123!","phone":"+1555e608dcd","imageUrl":"https://example.com/multi.jpg","email":"concurrentuser0e608dcd0@multitest.com","username":"concurrentuser0e608dcd0"}] as "application/json"
+21:23:16.880 [pool-2-thread-2] DEBUG org.springframework.web.client.RestTemplate - Accept=[application/json, application/*+json]
+21:23:16.881 [pool-2-thread-3] DEBUG org.springframework.web.client.RestTemplate - Writing [{"credentialType":"EMAIL","firstName":"ConcurrentUser2","lastName":"TestUser","password":"MultiTest123!","phone":"+1555cea7d56","imageUrl":"https://example.com/multi.jpg","email":"concurrentuser2cea7d565@multitest.com","username":"concurrentuser2cea7d565"}] as "application/json"
+21:23:16.882 [pool-2-thread-2] DEBUG org.springframework.web.client.RestTemplate - Writing [{"credentialType":"EMAIL","firstName":"ConcurrentUser1","lastName":"TestUser","password":"MultiTest123!","phone":"+155553167c6","imageUrl":"https://example.com/multi.jpg","email":"concurrentuser153167c6b@multitest.com","username":"concurrentuser153167c6b"}] as "application/json"
+21:23:16.891 [pool-2-thread-4] DEBUG org.springframework.web.client.RestTemplate - HTTP POST http://10.22.10.27/app/product-service/api/products
+21:23:16.891 [pool-2-thread-5] DEBUG org.springframework.web.client.RestTemplate - HTTP POST http://10.22.10.27/app/product-service/api/products
+21:23:16.891 [pool-2-thread-5] DEBUG org.springframework.web.client.RestTemplate - Accept=[application/json, application/*+json]
+21:23:16.891 [pool-2-thread-4] DEBUG org.springframework.web.client.RestTemplate - Accept=[application/json, application/*+json]
+21:23:16.891 [pool-2-thread-5] DEBUG org.springframework.web.client.RestTemplate - Writing [{"productTitle":"ConcurrentProduct1","priceUnit":96.26,"quantity":32,"imageUrl":"https://example.com/multiproduct.jpg","productBrand":"MultiBrand","sku":"MULTI7D68E0CC","categoryId":2}] as "application/json"
+21:23:16.892 [pool-2-thread-4] DEBUG org.springframework.web.client.RestTemplate - Writing [{"productTitle":"ConcurrentProduct0","priceUnit":61.47,"quantity":59,"imageUrl":"https://example.com/multiproduct.jpg","productBrand":"MultiBrand","sku":"MULTICC6EE7C9","categoryId":5}] as "application/json"
+21:25:32.008 [pool-2-thread-2] DEBUG org.springframework.web.client.RestTemplate - HTTP POST http://10.22.10.27/app/product-service/api/products
+21:25:32.009 [pool-2-thread-2] DEBUG org.springframework.web.client.RestTemplate - Accept=[application/json, application/*+json]
+21:25:32.009 [pool-2-thread-2] DEBUG org.springframework.web.client.RestTemplate - Writing [{"productTitle":"ConcurrentProduct2","priceUnit":35.54,"quantity":41,"imageUrl":"https://example.com/multiproduct.jpg","productBrand":"MultiBrand","sku":"MULTI6E90E43E","categoryId":2}] as "application/json"
+🌐 Testing against Gateway: http://10.22.10.27
+🛡️ Testing Service Resilience and Error Handling
+21:27:47.183 [main] DEBUG org.springframework.web.client.RestTemplate - HTTP POST http://10.22.10.27/app/user-service/api/users
+21:27:47.184 [main] DEBUG org.springframework.web.client.RestTemplate - Accept=[application/json, application/*+json]
+21:27:47.185 [main] DEBUG org.springframework.web.client.RestTemplate - Writing [{"firstName":"","email":"invalid-email"}] as "application/json"
+🌐 Testing against Gateway: http://10.22.10.27
+🔒 Testing Data Integrity Across Services
+21:30:02.352 [main] DEBUG org.springframework.web.client.RestTemplate - HTTP POST http://10.22.10.27/app/user-service/api/users
+21:30:02.353 [main] DEBUG org.springframework.web.client.RestTemplate - Accept=[application/json, application/*+json]
+21:30:02.353 [main] DEBUG org.springframework.web.client.RestTemplate - Writing [{"credentialType":"EMAIL","firstName":"IntegrityTestUser63018240","lastName":"TestUser","password":"MultiTest123!","phone":"+15551e8515f","imageUrl":"https://example.com/multi.jpg","email":"integritytestuser630182401e8515f2@multitest.com","username":"integritytestuser630182401e8515f2"}] as "application/json"
+🌐 Testing against Gateway: http://10.22.10.27
+📊 Testing High Volume Data Operations
+Creating 10 users in bulk...
+21:32:17.519 [main] DEBUG org.springframework.web.client.RestTemplate - HTTP POST http://10.22.10.27/app/user-service/api/users
+21:32:17.519 [main] DEBUG org.springframework.web.client.RestTemplate - Accept=[application/json, application/*+json]
+21:32:17.520 [main] DEBUG org.springframework.web.client.RestTemplate - Writing [{"credentialType":"EMAIL","firstName":"BulkUser0855192bd","lastName":"TestUser","password":"MultiTest123!","phone":"+15551a1eb0d","imageUrl":"https://example.com/multi.jpg","email":"bulkuser0855192bd1a1eb0d2@multitest.com","username":"bulkuser0855192bd1a1eb0d2"}] as "application/json"

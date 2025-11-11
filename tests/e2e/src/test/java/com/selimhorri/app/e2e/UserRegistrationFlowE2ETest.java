@@ -2,10 +2,10 @@ package com.selimhorri.app.e2e;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.selimhorri.app.e2e.util.JwtTestHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.*;
 import org.springframework.web.client.HttpClientErrorException;
@@ -21,7 +21,6 @@ import static org.assertj.core.api.Assertions.*;
  * E2E Test: User Registration and Authentication Flow
  * Tests complete user journey from registration to profile management
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @DisplayName("User Registration Flow E2E Tests")
 public class UserRegistrationFlowE2ETest {
     
@@ -54,6 +53,14 @@ public class UserRegistrationFlowE2ETest {
         testUser.put("credentialType", "EMAIL");
     }
     
+    private HttpHeaders createHeadersWithJwt() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String jwtToken = JwtTestHelper.generateToken("testuser");
+        headers.set("Authorization", "Bearer " + jwtToken);
+        return headers;
+    }
+    
     @Test
     @DisplayName("Complete User Registration Flow")
     void testCompleteUserRegistrationFlow() {
@@ -62,12 +69,12 @@ public class UserRegistrationFlowE2ETest {
         // STEP 1: Register new user
         System.out.println("📝 Step 1: User Registration");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = createHeadersWithJwt();
+        
         HttpEntity<Map<String, Object>> registrationRequest = new HttpEntity<>(testUser, headers);
         
         ResponseEntity<String> registrationResponse = restTemplate.postForEntity(
-                apiGatewayUrl + "/user-service/api/users",
+                apiGatewayUrl + "/app/user-service/api/users",
                 registrationRequest,
                 String.class
         );
@@ -100,7 +107,7 @@ public class UserRegistrationFlowE2ETest {
         System.out.println("🔍 Step 2: User Retrieval Verification");
         
         ResponseEntity<String> getUserResponse = restTemplate.getForEntity(
-                apiGatewayUrl + "/user-service/api/users/" + userId,
+                apiGatewayUrl + "/app/user-service/api/users/" + userId,
                 String.class
         );
         
@@ -134,7 +141,7 @@ public class UserRegistrationFlowE2ETest {
         HttpEntity<Map<String, Object>> updateRequest = new HttpEntity<>(updateData, headers);
         
         ResponseEntity<String> updateResponse = restTemplate.exchange(
-                apiGatewayUrl + "/user-service/api/users",
+                apiGatewayUrl + "/app/user-service/api/users",
                 HttpMethod.PUT,
                 updateRequest,
                 String.class
@@ -148,7 +155,7 @@ public class UserRegistrationFlowE2ETest {
         System.out.println("🔍 Step 4: Update Verification");
         
         ResponseEntity<String> getUpdatedResponse = restTemplate.getForEntity(
-                apiGatewayUrl + "/user-service/api/users/" + userId,
+                apiGatewayUrl + "/app/user-service/api/users/" + userId,
                 String.class
         );
         
@@ -178,13 +185,13 @@ public class UserRegistrationFlowE2ETest {
     void testDuplicateUserRegistrationPrevention() {
         System.out.println("🛡️ Testing Duplicate Registration Prevention");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = createHeadersWithJwt();
+        
         HttpEntity<Map<String, Object>> request = new HttpEntity<>(testUser, headers);
         
         // First registration should succeed
         ResponseEntity<String> firstResponse = restTemplate.postForEntity(
-                apiGatewayUrl + "/user-service/api/users",
+                apiGatewayUrl + "/app/user-service/api/users",
                 request,
                 String.class
         );
@@ -198,7 +205,7 @@ public class UserRegistrationFlowE2ETest {
         // Second registration with same data should fail
         try {
             ResponseEntity<String> duplicateResponse = restTemplate.postForEntity(
-                    apiGatewayUrl + "/user-service/api/users",
+                    apiGatewayUrl + "/app/user-service/api/users",
                     request,
                     String.class
             );
@@ -225,8 +232,8 @@ public class UserRegistrationFlowE2ETest {
     void testUserDataValidation() {
         System.out.println("✅ Testing User Data Validation");
         
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpHeaders headers = createHeadersWithJwt();
+        
         
         // Test with invalid email
         Map<String, Object> invalidUser = new HashMap<>(testUser);
@@ -236,7 +243,7 @@ public class UserRegistrationFlowE2ETest {
         
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(
-                    apiGatewayUrl + "/user-service/api/users",
+                    apiGatewayUrl + "/app/user-service/api/users",
                     invalidRequest,
                     String.class
             );
@@ -264,7 +271,7 @@ public class UserRegistrationFlowE2ETest {
         
         try {
             ResponseEntity<String> response = restTemplate.postForEntity(
-                    apiGatewayUrl + "/user-service/api/users",
+                    apiGatewayUrl + "/app/user-service/api/users",
                     incompleteRequest,
                     String.class
             );

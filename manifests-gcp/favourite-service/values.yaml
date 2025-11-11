@@ -1,45 +1,62 @@
-# Default values for favourite-service
-replicaCount: 2
+# manifests-gcp/favourite-service/values.yaml
+fullnameOverride: favourite-service
+
+replicaCount: 1
 
 image:
-  repository: gcr.io/your-gcp-project-id/favourite-service
-  tag: latest-master
+  repository: us-central1-docker.pkg.dev/ecommerce-backend-1760307199/ecommerce-microservices/favourite-service
+  tag: latest-dev
   pullPolicy: IfNotPresent
 
 service:
-  type: LoadBalancer
-  port: 8085
-  targetPort: 8085
+  type: NodePort
+  port: 8800
+  targetPort: 8800
+
+readinessProbe:
+  path: /favourite-service/actuator/health
+  port: 8800
+  initialDelaySeconds: 60
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+livenessProbe:
+  path: /favourite-service/actuator/health
+  port: 8800
+  initialDelaySeconds: 90
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: "dev"
+  - name: SPRING_ZIPKIN_BASE_URL
+    value: "http://zipkin:9411/"
+  - name: eureka.client.service-url.defaultZone
+    value: "http://discovery:8761/eureka"
+  - name: EUREKA_INSTANCE_HOSTNAME
+    value: "favourite-service"
+  - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
+    value: "false"
+  - name: EUREKA_CLIENT_FETCH_REGISTRY
+    value: "false"
+  - name: EUREKA_INSTANCE_PREFER_IP_ADDRESS
+    value: "false"
+  - name: EUREKA_CLIENT_ENABLED
+    value: "false"
+  - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+    value: "health,info,metrics"
 
 ingress:
   enabled: true
   className: "gce"
+  annotations:
+    kubernetes.io/ingress.class: "gce"
   hosts:
-    - host: favourite-service.your-domain.com
+    - host: ""
       paths:
-        - path: /
+        - path: /favourite-service
           pathType: Prefix
-
-resources:
-  limits:
-    cpu: 1000m
-    memory: 1Gi
-  requests:
-    cpu: 500m
-    memory: 512Mi
-
-nodeSelector: {}
-tolerations: []
-affinity: {}
-
-# Configuración específica del servicio
-config:
-  springProfiles: production
-  serverPort: 8085
-  
-# Health checks
-healthCheck:
-  enabled: true
-  path: /actuator/health
-  initialDelaySeconds: 90
-  periodSeconds: 30
+  tls: []
