@@ -1,39 +1,38 @@
+# scripts/deploy-all-services-staging.sh
 #!/bin/bash
-
-# Script de Despliegue Automatizado a Staging
-# Este script construye, sube y despliega todos los microservicios
 
 set -e
 
 # Colores
-RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-CYAN='\033[0;36m'
+YELLOW='\033[1;33m'
+RED='\033[0;31m'
 NC='\033[0m'
 
-# Configuración
-DOCKER_REGISTRY_USER="geoffrey0pv"
-VERSION="v1.0"
-NAMESPACE="ecommerce-staging"
-PROJECT_ROOT="/home/geoffrey0pv/Projects/2025-2/Ingeosft5/ecommerce-microservice-backend-app"
+echo -e "${BLUE}════════════════════════════════════════════════════════════${NC}"
+echo -e "${BLUE}  DESPLIEGUE DE TODOS LOS MICROSERVICIOS A GCP STAGING     ${NC}"
+echo -e "${BLUE}════════════════════════════════════════════════════════════${NC}\n"
 
-# Microservicios
-SERVICES=(
-    "user-service:8700"
-    "product-service:8500"
-    "order-service:8300"
-    "payment-service:8400"
-    "shipping-service:8600"
-    "favourite-service:8800"
+# Configuración
+NAMESPACE="staging"
+GCP_PROJECT="ecommerce-backend-1760307199"
+CLUSTER_NAME="ecommerce-devops-cluster"
+CLUSTER_REGION="us-central1"
+
+# Servicios a desplegar (en orden de dependencias)
+declare -A SERVICES=(
+    ["discovery"]="8761"
+    ["zipkin"]="9411"
+    ["user-service"]="8700"
+    ["product-service"]="8500"
+    ["order-service"]="8300"
+    ["payment-service"]="8084"
+    ["shipping-service"]="8085"
+    ["favourite-service"]="8086"
 )
 
-echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}"
-echo -e "${CYAN}     DESPLIEGUE AUTOMATIZADO A STAGING ENVIRONMENT           ${NC}"
-echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}\n"
-
-# Función para imprimir mensajes
+# Función para mostrar progreso
 print_step() {
     echo -e "\n${BLUE}▶ $1${NC}"
 }
@@ -50,206 +49,170 @@ print_warning() {
     echo -e "${YELLOW}⚠ $1${NC}"
 }
 
-# Verificar prerequisitos
-print_step "PASO 1: Verificando prerequisitos..."
+# Función para verificar si un pod está listo
+wait_for_pod() {
+    local service_name=$1
+    local max_attempts=60
+    local attempt=1
+    
+    print_step "Esperando a que ${service_name} esté listo..."
+    
+    while [ $attempt -le $max_attempts ]; do
+        READY=$(kubectl get pods -n ${NAMESPACE} -l app=${service_name} \
+            -o jsonpath='{.items[0].status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+        
+        if [ "$READY" == "true" ]; then
+            print_success "${service_name} está listo (intento ${attempt}/${max_attempts})"
+            return 0
+        fi
+        
+        echo -n "."
+        sleep 5
+        attempt=$((attempt + 1))
+    done
+    
+    print_error "${service_name} no está listo después de ${max_attempts} intentos"
+    kubectl get pods -n ${NAMESPACE} -l app=${service_name}
+    kubectl logs -n ${NAMESPACE} -l app=${service_name} --tail=50
+    return 1
+}
 
-if ! command -v kubectl &> /dev/null; then
-    print_error "kubectl no está instalado"
-    exit 1
-fi
-
-if ! command -v docker &> /dev/null; then
-    print_error "Docker no está instalado"
-    exit 1
-fi
-
-if ! kubectl cluster-info &> /dev/null; then
-    print_error "No hay conexión a cluster Kubernetes"
-    exit 1
-fi
-
-print_success "Todos los prerequisitos están disponibles"
-
-# Verificar conexión a Docker Hub
-print_step "PASO 2: Verificando acceso a Docker Hub..."
-
-if docker info | grep -q "Username: ${DOCKER_REGISTRY_USER}"; then
-    print_success "Conectado a Docker Hub como ${DOCKER_REGISTRY_USER}"
-else
-    print_warning "No estás logueado en Docker Hub"
-    read -p "¿Deseas hacer login ahora? (y/n): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        docker login -u ${DOCKER_REGISTRY_USER}
-    else
-        print_error "Debes estar logueado en Docker Hub para continuar"
-        exit 1
-    fi
-fi
-
-# Crear namespace si no existe
-print_step "PASO 3: Preparando namespace en Kubernetes..."
-
-if kubectl get namespace ${NAMESPACE} &> /dev/null; then
-    print_success "Namespace ${NAMESPACE} ya existe"
-else
-    kubectl create namespace ${NAMESPACE}
-    print_success "Namespace ${NAMESPACE} creado"
-fi
-
-# Función para construir imagen Docker
-build_docker_image() {
+# Función para verificar health endpoint
+check_health() {
     local service_name=$1
     local port=$2
+    local context_path=$3
     
-    print_step "Construyendo ${service_name}..."
+    print_step "Verificando health de ${service_name}..."
     
-    cd "${PROJECT_ROOT}/${service_name}"
+    # Obtener IP externa del LoadBalancer
+    local external_ip=""
+    local max_attempts=30
+    local attempt=1
     
-    # Compilar con Maven
-    echo "  → Compilando con Maven..."
-    ../mvnw clean package -DskipTests -q || {
-        print_error "Error compilando ${service_name}"
-        return 1
-    }
-    
-    # Construir imagen Docker
-    echo "  → Construyendo imagen Docker..."
-    cd "${PROJECT_ROOT}"
-    docker build \
-        -t "${DOCKER_REGISTRY_USER}/${service_name}:${VERSION}" \
-        -t "${DOCKER_REGISTRY_USER}/${service_name}:latest" \
-        -f "${service_name}/Dockerfile" \
-        . -q || {
-        print_error "Error construyendo imagen Docker para ${service_name}"
-        return 1
-    }
-    
-    print_success "${service_name} construido exitosamente"
-    return 0
-}
-
-# Función para subir imagen a Docker Hub
-push_docker_image() {
-    local service_name=$1
-    
-    echo "  → Subiendo ${service_name} a Docker Hub..."
-    docker push "${DOCKER_REGISTRY_USER}/${service_name}:${VERSION}" -q
-    docker push "${DOCKER_REGISTRY_USER}/${service_name}:latest" -q
-    
-    print_success "${service_name} subido a Docker Hub"
-}
-
-# Construir y subir todas las imágenes
-print_step "PASO 4: Construyendo imágenes Docker..."
-
-for service_config in "${SERVICES[@]}"; do
-    IFS=':' read -r service_name port <<< "$service_config"
-    build_docker_image "$service_name" "$port" || exit 1
-done
-
-print_step "PASO 5: Subiendo imágenes a Docker Hub..."
-
-for service_config in "${SERVICES[@]}"; do
-    IFS=':' read -r service_name port <<< "$service_config"
-    push_docker_image "$service_name"
-done
-
-# Desplegar en Kubernetes
-print_step "PASO 6: Desplegando en Kubernetes Staging..."
-
-cd "${PROJECT_ROOT}"
-
-if [ -d "k8s/staging" ]; then
-    kubectl apply -f k8s/staging/ --namespace=${NAMESPACE}
-    print_success "Manifiestos aplicados exitosamente"
-else
-    print_error "Directorio k8s/staging no encontrado"
-    exit 1
-fi
-
-# Esperar a que los pods estén listos
-print_step "PASO 7: Esperando a que los pods estén listos..."
-
-for service_config in "${SERVICES[@]}"; do
-    IFS=':' read -r service_name port <<< "$service_config"
-    
-    echo "  → Esperando ${service_name}..."
-    kubectl wait --for=condition=ready pod \
-        -l app=${service_name} \
-        -n ${NAMESPACE} \
-        --timeout=300s || {
-        print_warning "${service_name} no está listo aún (puede necesitar más tiempo)"
-    }
-done
-
-print_success "Despliegue completado"
-
-# Verificar estado
-print_step "PASO 8: Verificando estado del despliegue..."
-
-echo -e "\n${CYAN}Pods:${NC}"
-kubectl get pods -n ${NAMESPACE}
-
-echo -e "\n${CYAN}Services:${NC}"
-kubectl get svc -n ${NAMESPACE}
-
-echo -e "\n${CYAN}HPA:${NC}"
-kubectl get hpa -n ${NAMESPACE}
-
-# Probar health endpoints
-print_step "PASO 9: Probando health endpoints..."
-
-for service_config in "${SERVICES[@]}"; do
-    IFS=':' read -r service_name port <<< "$service_config"
-    
-    echo "  → Probando ${service_name}..."
-    
-    # Obtener IP del servicio
-    SERVICE_IP=$(kubectl get svc ${service_name} -n ${NAMESPACE} -o jsonpath='{.spec.clusterIP}' 2>/dev/null)
-    
-    if [ -n "$SERVICE_IP" ]; then
-        # Probar con curl desde un pod temporal
-        if kubectl run curl-test-${service_name} \
-            --image=curlimages/curl:latest \
-            --rm -i --restart=Never \
-            -n ${NAMESPACE} \
-            -- curl -s -f http://${SERVICE_IP}:${port}/actuator/health &> /dev/null; then
-            print_success "${service_name} respondiendo correctamente"
-        else
-            print_warning "${service_name} no responde aún (puede necesitar inicialización)"
+    while [ $attempt -le $max_attempts ]; do
+        external_ip=$(kubectl get svc ${service_name} -n ${NAMESPACE} \
+            -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+        
+        if [ -n "$external_ip" ] && [ "$external_ip" != "<pending>" ]; then
+            print_success "IP externa obtenida: ${external_ip}"
+            break
         fi
+        
+        echo -n "."
+        sleep 5
+        attempt=$((attempt + 1))
+    done
+    
+    if [ -z "$external_ip" ]; then
+        print_warning "No se pudo obtener IP externa, probando internamente..."
+        
+        # Test interno desde un pod
+        POD_NAME=$(kubectl get pods -n ${NAMESPACE} -l app=${service_name} \
+            -o jsonpath='{.items[0].metadata.name}')
+        
+        kubectl exec ${POD_NAME} -n ${NAMESPACE} -- \
+            curl -f http://localhost:${port}${context_path}/actuator/health || {
+                print_error "Health check interno falló"
+                return 1
+            }
+        
+        print_success "Health check interno OK"
+        return 0
+    fi
+    
+    # Test externo
+    curl -f --retry 5 --retry-delay 5 \
+        http://${external_ip}:${port}${context_path}/actuator/health || {
+            print_error "Health check externo falló"
+            return 1
+        }
+    
+    print_success "Health check externo OK: http://${external_ip}:${port}${context_path}/actuator/health"
+}
+
+# Autenticación GCP
+print_step "Autenticando con GCP..."
+gcloud auth activate-service-account --key-file=${GOOGLE_APPLICATION_CREDENTIALS}
+gcloud config set project ${GCP_PROJECT}
+gcloud container clusters get-credentials ${CLUSTER_NAME} --region=${CLUSTER_REGION} --project=${GCP_PROJECT}
+print_success "Autenticación completada"
+
+# Crear namespace
+print_step "Creando namespace ${NAMESPACE}..."
+kubectl create namespace ${NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
+print_success "Namespace listo"
+
+# Desplegar cada servicio
+for service in discovery zipkin user-service product-service order-service payment-service shipping-service favourite-service; do
+    port=${SERVICES[$service]}
+    
+    echo -e "\n${YELLOW}═══════════════════════════════════════════════════════${NC}"
+    print_step "Desplegando ${service}..."
+    echo -e "${YELLOW}═══════════════════════════════════════════════════════${NC}"
+    
+    # Verificar que existe el chart
+    if [ ! -d "manifests-gcp/${service}" ]; then
+        print_error "Chart no encontrado: manifests-gcp/${service}"
+        continue
+    fi
+    
+    # Desplegar con Helm
+    helm upgrade --install ${service} manifests-gcp/${service}/ \
+        --namespace ${NAMESPACE} \
+        --set image.tag=latest-dev \
+        --wait \
+        --timeout=5m || {
+            print_error "Falló el despliegue de ${service}"
+            kubectl get events -n ${NAMESPACE} --sort-by='.lastTimestamp' | tail -20
+            exit 1
+        }
+    
+    print_success "${service} desplegado"
+    
+    # Esperar a que el pod esté listo
+    wait_for_pod ${service} || {
+        print_error "Pod de ${service} no está listo"
+        exit 1
+    }
+    
+    # Verificar health (solo para microservicios, no para discovery/zipkin)
+    case $service in
+        user-service|product-service|order-service|payment-service|shipping-service|favourite-service)
+            check_health ${service} ${port} "/${service}" || {
+                print_warning "Health check falló para ${service}, pero continuando..."
+            }
+            ;;
+        discovery)
+            check_health ${service} ${port} "" || {
+                print_warning "Health check falló para discovery, pero continuando..."
+            }
+            ;;
+    esac
+    
+    # Pausa entre despliegues
+    if [ "$service" == "discovery" ] || [ "$service" == "zipkin" ]; then
+        print_step "Esperando 30 segundos para que ${service} se estabilice..."
+        sleep 30
     else
-        print_warning "No se pudo obtener IP del servicio ${service_name}"
+        sleep 10
     fi
 done
 
 # Resumen final
-echo -e "\n${CYAN}═══════════════════════════════════════════════════════════════${NC}"
-echo -e "${GREEN}          ✅ DESPLIEGUE COMPLETADO EXITOSAMENTE              ${NC}"
-echo -e "${CYAN}═══════════════════════════════════════════════════════════════${NC}\n"
+echo -e "\n${GREEN}════════════════════════════════════════════════════════════${NC}"
+echo -e "${GREEN}  ✓ DESPLIEGUE COMPLETADO EXITOSAMENTE                      ${NC}"
+echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}\n"
 
-echo -e "${CYAN}Resumen del Despliegue:${NC}"
-echo -e "  • Namespace: ${NAMESPACE}"
-echo -e "  • Servicios desplegados: ${#SERVICES[@]}"
-echo -e "  • Versión de imágenes: ${VERSION}"
-echo -e "  • Registry: ${DOCKER_REGISTRY_USER}"
+print_step "Resumen de Servicios Desplegados:"
+kubectl get pods -n ${NAMESPACE}
 
-echo -e "\n${CYAN}Comandos útiles:${NC}"
-echo -e "  • Ver pods:    ${YELLOW}kubectl get pods -n ${NAMESPACE}${NC}"
-echo -e "  • Ver logs:    ${YELLOW}kubectl logs -f deployment/user-service -n ${NAMESPACE}${NC}"
-echo -e "  • Port-forward: ${YELLOW}kubectl port-forward -n ${NAMESPACE} svc/user-service 8700:8700${NC}"
-echo -e "  • Ver eventos: ${YELLOW}kubectl get events -n ${NAMESPACE} --sort-by='.lastTimestamp'${NC}"
+echo ""
+print_step "Servicios y sus IPs externas:"
+kubectl get svc -n ${NAMESPACE}
 
-echo -e "\n${CYAN}Acceso a Monitoreo:${NC}"
-echo -e "  • Grafana: ${YELLOW}http://grafana.35.226.128.62.nip.io${NC}"
-echo -e "  • Jenkins: ${YELLOW}http://jenkins.35.226.128.62.nip.io${NC}"
-
-echo -e "\n${CYAN}Próximos pasos:${NC}"
-echo -e "  1. Verificar que todos los pods estén en estado Running"
-echo -e "  2. Configurar Ingress para acceso externo (opcional)"
-echo -e "  3. Configurar pipelines de Jenkins"
-echo -e "  4. Ejecutar pruebas E2E"
-
-echo -e "\n${GREEN}¡Despliegue completado! 🚀${NC}\n"
-
+echo -e "\n${BLUE}Comandos útiles:${NC}"
+echo -e "  • Ver pods:     ${YELLOW}kubectl get pods -n ${NAMESPACE}${NC}"
+echo -e "  • Ver services: ${YELLOW}kubectl get svc -n ${NAMESPACE}${NC}"
+echo -e "  • Logs:         ${YELLOW}kubectl logs -f <pod-name> -n ${NAMESPACE}${NC}"
+echo ""

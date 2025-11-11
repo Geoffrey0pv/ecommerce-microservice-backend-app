@@ -1,16 +1,14 @@
 package com.selimhorri.app.e2e;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.selimhorri.app.e2e.util.JwtTestHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
 import org.junit.jupiter.api.Order;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.*;
-import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -24,21 +22,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * E2E Test: Multi-Service Integration Flow
  * Tests complex interactions between all microservices to validate system integration
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@TestPropertySource(properties = {
-        "spring.cloud.config.enabled=false",
-        "eureka.client.enabled=false"
-})
 @TestMethodOrder(OrderAnnotation.class)
 public class MultiServiceIntegrationE2ETest {
-
-    @LocalServerPort
-    private int port;
 
     private TestRestTemplate restTemplate;
     private ObjectMapper objectMapper;
     private String baseUrl;
-    private final String API_GATEWAY_URL = "http://localhost:8100";
 
     // Test data storage
     private final List<Integer> createdUserIds = new ArrayList<>();
@@ -50,7 +39,18 @@ public class MultiServiceIntegrationE2ETest {
     void setUp() {
         restTemplate = new TestRestTemplate();
         objectMapper = new ObjectMapper();
-        baseUrl = "http://localhost:" + port;
+        // Read from system property passed by Maven: -Dapi.gateway.url=http://10.22.10.27
+        baseUrl = System.getProperty("api.gateway.url", "http://localhost:8100");
+        
+        System.out.println("🌐 Testing against Gateway: " + baseUrl);
+    }
+    
+    private HttpHeaders createHeadersWithJwt() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String jwtToken = JwtTestHelper.generateToken("testuser");
+        headers.set("Authorization", "Bearer " + jwtToken);
+        return headers;
     }
 
     @Test
@@ -85,7 +85,7 @@ public class MultiServiceIntegrationE2ETest {
             cartRequest.put("userId", userId);
 
             ResponseEntity<Map> cartResponse = restTemplate.postForEntity(
-                    API_GATEWAY_URL + "/order-service/api/carts",
+                    baseUrl + "/app/order-service/api/carts",
                     createJsonEntity(cartRequest),
                     Map.class
             );
@@ -110,7 +110,7 @@ public class MultiServiceIntegrationE2ETest {
             orderRequest.put("cartId", cartId);
 
             ResponseEntity<Map> orderResponse = restTemplate.postForEntity(
-                    API_GATEWAY_URL + "/order-service/api/orders",
+                    baseUrl + "/app/order-service/api/orders",
                     createJsonEntity(orderRequest),
                     Map.class
             );
@@ -146,7 +146,7 @@ public class MultiServiceIntegrationE2ETest {
                 Map<String, Object> userRequest = createUserRequest("ConcurrentUser" + userIndex);
                 
                 ResponseEntity<Map> response = restTemplate.postForEntity(
-                        API_GATEWAY_URL + "/user-service/api/users",
+                        baseUrl + "/app/user-service/api/users",
                         createJsonEntity(userRequest),
                         Map.class
                 );
@@ -165,7 +165,7 @@ public class MultiServiceIntegrationE2ETest {
                 Map<String, Object> productRequest = createProductRequest("ConcurrentProduct" + productIndex);
                 
                 ResponseEntity<Map> response = restTemplate.postForEntity(
-                        API_GATEWAY_URL + "/product-service/api/products",
+                        baseUrl + "/app/product-service/api/products",
                         createJsonEntity(productRequest),
                         Map.class
                 );
@@ -195,7 +195,7 @@ public class MultiServiceIntegrationE2ETest {
         invalidUser.put("email", "invalid-email"); // Invalid email format
 
         ResponseEntity<Map> invalidUserResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(invalidUser),
                 Map.class
         );
@@ -207,7 +207,7 @@ public class MultiServiceIntegrationE2ETest {
 
         // Test 2: Non-existent resource access
         ResponseEntity<Map> nonExistentUser = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/user-service/api/users/99999",
+                baseUrl + "/app/user-service/api/users/99999",
                 Map.class
         );
 
@@ -222,7 +222,7 @@ public class MultiServiceIntegrationE2ETest {
         invalidOrder.put("cartId", 99999); // Non-existent cart
 
         ResponseEntity<Map> invalidOrderResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/order-service/api/orders",
+                baseUrl + "/app/order-service/api/orders",
                 createJsonEntity(invalidOrder),
                 Map.class
         );
@@ -252,7 +252,7 @@ public class MultiServiceIntegrationE2ETest {
         cartRequest.put("userId", userId);
 
         ResponseEntity<Map> cartResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/order-service/api/carts",
+                baseUrl + "/app/order-service/api/carts",
                 createJsonEntity(cartRequest),
                 Map.class
         );
@@ -267,7 +267,7 @@ public class MultiServiceIntegrationE2ETest {
         orderRequest.put("cartId", cartId);
 
         ResponseEntity<Map> orderResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/order-service/api/orders",
+                baseUrl + "/app/order-service/api/orders",
                 createJsonEntity(orderRequest),
                 Map.class
         );
@@ -278,7 +278,7 @@ public class MultiServiceIntegrationE2ETest {
         // Verify data integrity
         // 1. User still exists and is correct
         ResponseEntity<Map> userCheck = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/user-service/api/users/" + userId,
+                baseUrl + "/app/user-service/api/users/" + userId,
                 Map.class
         );
         assertThat(userCheck.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -286,7 +286,7 @@ public class MultiServiceIntegrationE2ETest {
 
         // 2. Product still exists and is correct
         ResponseEntity<Map> productCheck = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/product-service/api/products/" + productId,
+                baseUrl + "/app/product-service/api/products/" + productId,
                 Map.class
         );
         assertThat(productCheck.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -294,7 +294,7 @@ public class MultiServiceIntegrationE2ETest {
 
         // 3. Cart still exists and belongs to correct user
         ResponseEntity<Map> cartCheck = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/order-service/api/carts/" + cartId,
+                baseUrl + "/app/order-service/api/carts/" + cartId,
                 Map.class
         );
         assertThat(cartCheck.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -302,7 +302,7 @@ public class MultiServiceIntegrationE2ETest {
 
         // 4. Order exists and references correct cart
         ResponseEntity<Map> orderCheck = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/order-service/api/orders/" + orderId,
+                baseUrl + "/app/order-service/api/orders/" + orderId,
                 Map.class
         );
         assertThat(orderCheck.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -340,14 +340,14 @@ public class MultiServiceIntegrationE2ETest {
         System.out.println("Verifying bulk data retrieval...");
         
         ResponseEntity<List> allUsers = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 List.class
         );
         assertThat(allUsers.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(allUsers.getBody()).hasSizeGreaterThanOrEqualTo(BULK_SIZE);
 
         ResponseEntity<List> allProducts = restTemplate.getForEntity(
-                API_GATEWAY_URL + "/product-service/api/products",
+                baseUrl + "/app/product-service/api/products",
                 List.class
         );
         assertThat(allProducts.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -383,7 +383,7 @@ public class MultiServiceIntegrationE2ETest {
         Map<String, Object> userRequest = createUserRequest(namePrefix + uniqueId);
 
         ResponseEntity<Map> response = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(userRequest),
                 Map.class
         );
@@ -397,7 +397,7 @@ public class MultiServiceIntegrationE2ETest {
         Map<String, Object> productRequest = createProductRequest(namePrefix + uniqueId);
 
         ResponseEntity<Map> response = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/product-service/api/products",
+                baseUrl + "/app/product-service/api/products",
                 createJsonEntity(productRequest),
                 Map.class
         );
@@ -438,7 +438,7 @@ public class MultiServiceIntegrationE2ETest {
         // Verify all created users still exist
         for (Integer userId : createdUserIds) {
             ResponseEntity<Map> userResponse = restTemplate.getForEntity(
-                    API_GATEWAY_URL + "/user-service/api/users/" + userId,
+                    baseUrl + "/app/user-service/api/users/" + userId,
                     Map.class
             );
             assertThat(userResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -447,7 +447,7 @@ public class MultiServiceIntegrationE2ETest {
         // Verify all created products still exist
         for (Integer productId : createdProductIds) {
             ResponseEntity<Map> productResponse = restTemplate.getForEntity(
-                    API_GATEWAY_URL + "/product-service/api/products/" + productId,
+                    baseUrl + "/app/product-service/api/products/" + productId,
                     Map.class
             );
             assertThat(productResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -456,7 +456,7 @@ public class MultiServiceIntegrationE2ETest {
         // Verify all created carts still exist
         for (Integer cartId : createdCartIds) {
             ResponseEntity<Map> cartResponse = restTemplate.getForEntity(
-                    API_GATEWAY_URL + "/order-service/api/carts/" + cartId,
+                    baseUrl + "/app/order-service/api/carts/" + cartId,
                     Map.class
             );
             assertThat(cartResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -465,7 +465,7 @@ public class MultiServiceIntegrationE2ETest {
         // Verify all created orders still exist
         for (Integer orderId : createdOrderIds) {
             ResponseEntity<Map> orderResponse = restTemplate.getForEntity(
-                    API_GATEWAY_URL + "/order-service/api/orders/" + orderId,
+                    baseUrl + "/app/order-service/api/orders/" + orderId,
                     Map.class
             );
             assertThat(orderResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -492,12 +492,21 @@ public class MultiServiceIntegrationE2ETest {
 
     private HttpEntity<String> createJsonEntity(Map<String, Object> body) {
         try {
+            String json = objectMapper.writeValueAsString(body);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            String json = objectMapper.writeValueAsString(body);
+            String jwtToken = JwtTestHelper.generateToken("testuser");
+            headers.set("Authorization", "Bearer " + jwtToken);
             return new HttpEntity<>(json, headers);
         } catch (Exception e) {
             throw new RuntimeException("Failed to create JSON entity", e);
         }
+    }
+    
+    private HttpEntity<Void> createAuthHeaders() {
+        HttpHeaders headers = new HttpHeaders();
+        String jwtToken = JwtTestHelper.generateToken("testuser");
+        headers.set("Authorization", "Bearer " + jwtToken);
+        return new HttpEntity<>(headers);
     }
 }

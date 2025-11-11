@@ -1,61 +1,54 @@
+# manifests-gcp/shipping-service/templates/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "{{ .Chart.Name }}.fullname" . }}
+  name: {{ .Values.fullnameOverride }}
   labels:
-    app: {{ .Chart.Name }}
-    version: {{ .Chart.AppVersion }}
+    app: {{ .Values.fullnameOverride }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ .Chart.Name }}
+      app: {{ .Values.fullnameOverride }}
   template:
     metadata:
       labels:
-        app: {{ .Chart.Name }}
-        version: {{ .Chart.AppVersion }}
+        app: {{ .Values.fullnameOverride }}
     spec:
       containers:
-        - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
-          ports:
-            - name: http
-              containerPort: {{ .Values.service.targetPort }}
-              protocol: TCP
-          env:
-            - name: SPRING_PROFILES_ACTIVE
-              value: {{ .Values.config.springProfiles }}
-            - name: SERVER_PORT
-              value: "{{ .Values.config.serverPort }}"
-            - name: EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE
-              value: "http://discovery:8761/eureka"
-          {{- if .Values.healthCheck.enabled }}
-          livenessProbe:
-            httpGet:
-              path: {{ .Values.healthCheck.path }}
-              port: http
-            initialDelaySeconds: {{ .Values.healthCheck.initialDelaySeconds }}
-            periodSeconds: {{ .Values.healthCheck.periodSeconds }}
-          readinessProbe:
-            httpGet:
-              path: {{ .Values.healthCheck.path }}
-              port: http
-            initialDelaySeconds: {{ .Values.healthCheck.initialDelaySeconds }}
-            periodSeconds: {{ .Values.healthCheck.periodSeconds }}
-          {{- end }}
-          resources:
-            {{- toYaml .Values.resources | nindent 12 }}
-      {{- with .Values.nodeSelector }}
-      nodeSelector:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.affinity }}
-      affinity:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .Values.tolerations }}
-      tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
+      - name: {{ .Values.fullnameOverride }}
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        ports:
+        - containerPort: {{ .Values.service.port }}
+        env:
+        {{- range $index, $env := .Values.env }}
+        {{- if $env }}
+        {{- if $env.name }}
+        - name: {{ $env.name }}
+          value: {{ $env.value | quote }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+          httpGet:
+            path: {{ .Values.readinessProbe.path }}
+            port: {{ .Values.readinessProbe.port }}
+          initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.readinessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.readinessProbe.failureThreshold }}
+        livenessProbe:
+          httpGet:
+            path: {{ .Values.livenessProbe.path }}
+            port: {{ .Values.livenessProbe.port }}
+          initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
+          periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+          timeoutSeconds: {{ .Values.livenessProbe.timeoutSeconds }}
+          failureThreshold: {{ .Values.livenessProbe.failureThreshold }}
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "250m"

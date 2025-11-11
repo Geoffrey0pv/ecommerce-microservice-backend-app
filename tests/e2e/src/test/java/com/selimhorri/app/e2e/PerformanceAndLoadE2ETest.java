@@ -1,16 +1,14 @@
 package com.selimhorri.app.e2e;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.selimhorri.app.e2e.util.JwtTestHelper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation;
 import org.junit.jupiter.api.Order;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.client.TestRestTemplate;
-import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.http.*;
-import org.springframework.test.context.TestPropertySource;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -23,21 +21,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * E2E Test: Performance and Load Testing
  * Tests system performance under various load conditions and measures response times
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
-@TestPropertySource(properties = {
-        "spring.cloud.config.enabled=false",
-        "eureka.client.enabled=false"
-})
 @TestMethodOrder(OrderAnnotation.class)
 public class PerformanceAndLoadE2ETest {
-
-    @LocalServerPort
-    private int port;
 
     private TestRestTemplate restTemplate;
     private ObjectMapper objectMapper;
     private String baseUrl;
-    private final String API_GATEWAY_URL = "http://localhost:8100";
 
     // Performance metrics
     private final Map<String, List<Long>> performanceMetrics = new ConcurrentHashMap<>();
@@ -47,13 +36,38 @@ public class PerformanceAndLoadE2ETest {
     void setUp() {
         restTemplate = new TestRestTemplate();
         objectMapper = new ObjectMapper();
-        baseUrl = "http://localhost:" + port;
+        // Read from system property passed by Maven: -Dapi.gateway.url=http://10.22.10.27
+        baseUrl = System.getProperty("api.gateway.url", "http://localhost:8100");
+        System.out.println("🌐 Testing against Gateway: " + baseUrl);
         
         // Initialize metrics
         performanceMetrics.clear();
         errorCounts.clear();
     }
+    
+    private HttpHeaders createHeadersWithJwt() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        String jwtToken = JwtTestHelper.generateToken("testuser");
+        headers.set("Authorization", "Bearer " + jwtToken);
+        return headers;
+    }
+    
+    // Helper methods that automatically include JWT headers
+    private <T> ResponseEntity<T> getWithJwt(String url, Class<T> responseType) {
+        HttpHeaders headers = createHeadersWithJwt();
+        HttpEntity<?> entity = new HttpEntity<>(headers);
+        return restTemplate.exchange(url, HttpMethod.GET, entity, responseType);
+    }
+    
+    private <T> ResponseEntity<T> postWithJwt(String url, Object body, Class<T> responseType) {
+        HttpHeaders headers = createHeadersWithJwt();
+        HttpEntity<Object> entity = new HttpEntity<>(body, headers);
+        return restTemplate.exchange(url, HttpMethod.POST, entity, responseType);
+    }
 
+
+    
     @Test
     @Order(1)
     void testBasicResponseTimeMetrics() {
@@ -63,7 +77,7 @@ public class PerformanceAndLoadE2ETest {
         
         // Test User Service response times
         List<Long> userServiceTimes = measureResponseTimes(
-                API_GATEWAY_URL + "/user-service/api/users", 
+                baseUrl + "/app/user-service/api/users", 
                 HttpMethod.GET, 
                 null, 
                 SAMPLE_SIZE
@@ -72,7 +86,7 @@ public class PerformanceAndLoadE2ETest {
 
         // Test Product Service response times
         List<Long> productServiceTimes = measureResponseTimes(
-                API_GATEWAY_URL + "/product-service/api/products", 
+                baseUrl + "/app/product-service/api/products", 
                 HttpMethod.GET, 
                 null, 
                 SAMPLE_SIZE
@@ -81,7 +95,7 @@ public class PerformanceAndLoadE2ETest {
 
         // Test Order Service response times
         List<Long> orderServiceTimes = measureResponseTimes(
-                API_GATEWAY_URL + "/order-service/api/orders", 
+                baseUrl + "/app/order-service/api/orders", 
                 HttpMethod.GET, 
                 null, 
                 SAMPLE_SIZE
@@ -104,6 +118,8 @@ public class PerformanceAndLoadE2ETest {
         System.out.println("✅ All services respond within acceptable time limits");
     }
 
+
+    
     @Test
     @Order(2)
     void testConcurrentUserLoad() {
@@ -146,6 +162,8 @@ public class PerformanceAndLoadE2ETest {
         System.out.println("✅ Concurrent load test completed");
     }
 
+
+    
     @Test
     @Order(3)
     void testHighVolumeDataCreation() {
@@ -166,8 +184,8 @@ public class PerformanceAndLoadE2ETest {
             Map<String, Object> userRequest = createUserRequest("BatchUser" + i);
             
             try {
-                ResponseEntity<Map> response = restTemplate.postForEntity(
-                        API_GATEWAY_URL + "/user-service/api/users",
+                ResponseEntity<Map> response = postWithJwt(
+                        baseUrl + "/app/user-service/api/users",
                         createJsonEntity(userRequest),
                         Map.class
                 );
@@ -202,6 +220,8 @@ public class PerformanceAndLoadE2ETest {
         System.out.println("✅ High volume creation test passed");
     }
 
+
+    
     @Test
     @Order(4)
     void testDatabaseStressTest() {
@@ -211,8 +231,8 @@ public class PerformanceAndLoadE2ETest {
         
         // Create some base data first
         Map<String, Object> testUser = createUserRequest("StressTestUser");
-        ResponseEntity<Map> userResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+        ResponseEntity<Map> userResponse = postWithJwt(
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(testUser),
                 Map.class
         );
@@ -239,8 +259,8 @@ public class PerformanceAndLoadE2ETest {
             // Read operation
             long readStart = System.currentTimeMillis();
             try {
-                ResponseEntity<Map> readResponse = restTemplate.getForEntity(
-                        API_GATEWAY_URL + "/user-service/api/users/" + userId,
+                ResponseEntity<Map> readResponse = getWithJwt(
+                        baseUrl + "/app/user-service/api/users/" + userId,
                         Map.class
                 );
                 
@@ -260,8 +280,8 @@ public class PerformanceAndLoadE2ETest {
                 Map<String, Object> cartRequest = new HashMap<>();
                 cartRequest.put("userId", userId);
                 
-                ResponseEntity<Map> writeResponse = restTemplate.postForEntity(
-                        API_GATEWAY_URL + "/order-service/api/carts",
+                ResponseEntity<Map> writeResponse = postWithJwt(
+                        baseUrl + "/app/order-service/api/carts",
                         createJsonEntity(cartRequest),
                         Map.class
                 );
@@ -295,6 +315,8 @@ public class PerformanceAndLoadE2ETest {
         System.out.println("✅ Database stress test completed");
     }
 
+
+    
     @Test
     @Order(5)
     void testSystemThroughputMeasurement() {
@@ -356,6 +378,8 @@ public class PerformanceAndLoadE2ETest {
         System.out.println("✅ Throughput test completed");
     }
 
+
+    
     @Test
     @Order(6)
     void testPerformanceBenchmarks() {
@@ -405,10 +429,14 @@ public class PerformanceAndLoadE2ETest {
             long startTime = System.currentTimeMillis();
             
             try {
+                HttpHeaders headers = createHeadersWithJwt();
+                
                 if (method == HttpMethod.GET) {
-                    restTemplate.getForEntity(url, Map.class);
+                    HttpEntity<?> entity = new HttpEntity<>(headers);
+                    restTemplate.exchange(url, method, entity, Map.class);
                 } else if (method == HttpMethod.POST && body != null) {
-                    restTemplate.postForEntity(url, body, Map.class);
+                    HttpEntity<Object> entity = new HttpEntity<>(body, headers);
+                    restTemplate.exchange(url, method, entity, Map.class);
                 }
                 
                 long responseTime = System.currentTimeMillis() - startTime;
@@ -438,8 +466,8 @@ public class PerformanceAndLoadE2ETest {
         for (int i = 0; i < requestCount; i++) {
             try {
                 // Simulate user browsing products
-                ResponseEntity<List> productsResponse = restTemplate.getForEntity(
-                        API_GATEWAY_URL + "/product-service/api/products",
+                ResponseEntity<List> productsResponse = getWithJwt(
+                        baseUrl + "/app/product-service/api/products",
                         List.class
                 );
                 
@@ -482,8 +510,8 @@ public class PerformanceAndLoadE2ETest {
         
         while (System.currentTimeMillis() < endTime) {
             try {
-                ResponseEntity<List> response = restTemplate.getForEntity(
-                        API_GATEWAY_URL + "/user-service/api/users",
+                ResponseEntity<List> response = getWithJwt(
+                        baseUrl + "/app/user-service/api/users",
                         List.class
                 );
                 
@@ -511,8 +539,8 @@ public class PerformanceAndLoadE2ETest {
             try {
                 // CREATE
                 Map<String, Object> userRequest = createUserRequest("BenchUser" + i);
-                ResponseEntity<Map> createResponse = restTemplate.postForEntity(
-                        API_GATEWAY_URL + "/user-service/api/users",
+                ResponseEntity<Map> createResponse = postWithJwt(
+                        baseUrl + "/app/user-service/api/users",
                         createJsonEntity(userRequest),
                         Map.class
                 );
@@ -521,8 +549,8 @@ public class PerformanceAndLoadE2ETest {
                     Integer userId = (Integer) createResponse.getBody().get("userId");
                     
                     // READ
-                    ResponseEntity<Map> readResponse = restTemplate.getForEntity(
-                            API_GATEWAY_URL + "/user-service/api/users/" + userId,
+                    ResponseEntity<Map> readResponse = getWithJwt(
+                            baseUrl + "/app/user-service/api/users/" + userId,
                             Map.class
                     );
                     
@@ -552,8 +580,8 @@ public class PerformanceAndLoadE2ETest {
         
         for (int i = 0; i < OPERATIONS; i++) {
             try {
-                ResponseEntity<List> response = restTemplate.getForEntity(
-                        API_GATEWAY_URL + "/product-service/api/products",
+                ResponseEntity<List> response = getWithJwt(
+                        baseUrl + "/app/product-service/api/products",
                         List.class
                 );
                 
@@ -580,8 +608,8 @@ public class PerformanceAndLoadE2ETest {
         
         // Create a test user first
         Map<String, Object> userRequest = createUserRequest("OrderBenchUser");
-        ResponseEntity<Map> userResponse = restTemplate.postForEntity(
-                API_GATEWAY_URL + "/user-service/api/users",
+        ResponseEntity<Map> userResponse = postWithJwt(
+                baseUrl + "/app/user-service/api/users",
                 createJsonEntity(userRequest),
                 Map.class
         );
@@ -601,8 +629,8 @@ public class PerformanceAndLoadE2ETest {
                 Map<String, Object> cartRequest = new HashMap<>();
                 cartRequest.put("userId", userId);
                 
-                ResponseEntity<Map> cartResponse = restTemplate.postForEntity(
-                        API_GATEWAY_URL + "/order-service/api/carts",
+                ResponseEntity<Map> cartResponse = postWithJwt(
+                        baseUrl + "/app/order-service/api/carts",
                         createJsonEntity(cartRequest),
                         Map.class
                 );
@@ -617,8 +645,8 @@ public class PerformanceAndLoadE2ETest {
                     orderRequest.put("orderFee", 25.0);
                     orderRequest.put("cartId", cartId);
                     
-                    ResponseEntity<Map> orderResponse = restTemplate.postForEntity(
-                            API_GATEWAY_URL + "/order-service/api/orders",
+                    ResponseEntity<Map> orderResponse = postWithJwt(
+                            baseUrl + "/app/order-service/api/orders",
                             createJsonEntity(orderRequest),
                             Map.class
                     );
@@ -689,9 +717,8 @@ public class PerformanceAndLoadE2ETest {
 
     private HttpEntity<String> createJsonEntity(Map<String, Object> body) {
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
             String json = objectMapper.writeValueAsString(body);
+            HttpHeaders headers = createHeadersWithJwt();
             return new HttpEntity<>(json, headers);
         } catch (Exception e) {
             throw new RuntimeException("Failed to create JSON entity", e);
